@@ -1,44 +1,67 @@
-//controllers/authController.js
-const User = require("../models/User");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const sendEmail = require("../utils/sendEmail");
+// controllers/authController.js
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const sendEmail = require('../utils/sendEmail');
 
+/**
+ * Register a new user
+ * @route POST /api/auth/register
+ */
 exports.register = async (req, res) => {
-  // ვიღებთ ყველა ველს მოთხოვნიდან
-  const { name, email, password, secondName, phone, dateOfBirth, personalNumber } = req.body;
-  
-  console.log("Registration request body:", req.body); // დებაგისთვის
-
   try {
-    let user = await User.findOne({ email });
-    if (user) return res.status(400).json({ message: "User already exists" });
+    const { name, secondName, email, password } = req.body;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // შევქმნათ მომხმარებელი ყველა მიღებული მონაცემით
-    user = await User.create({ 
-      name, 
-      email, 
-      password: hashedPassword,
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    if (user) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    // Create new user
+    user = new User({
+      name,
       secondName,
-      phone,
-      dateOfBirth,
-      personalNumber
+      email,
+      password
     });
 
-    const emailToken = jwt.sign({ id: user._id }, process.env.EMAIL_SECRET, { expiresIn: "1d" });
+    // Hash password before saving
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(password, salt);
 
-    const url = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
-    await sendEmail(email, "Verify your email", `Click here to verify: ${url}`);
+    await user.save();
 
-    res.status(201).json({ message: "User registered. Check your email for verification." });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Server error");
+    // Create email verification token
+    const emailToken = jwt.sign(
+      { id: user._id },
+      process.env.EMAIL_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    // Verification URL
+    const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
+
+    // Send verification email
+    await sendEmail(
+      email,
+      "Email Verification",
+      `Click here to verify: ${verificationUrl}`
+    );
+
+    res.status(201).json({ 
+      message: "User registered successfully. Please verify your email." 
+    });
+  } catch (err) {
+    console.error("Error registering user:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };
 
+/**
+ * Verify user email with token
+ * @route GET /api/auth/verify/:token
+ */
 exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -51,45 +74,200 @@ exports.verifyEmail = async (req, res) => {
     user.isVerified = true;
     await user.save();
 
-    res.status(200).json({ message: "Email verified successfully" });
+    // HTML response for successful verification
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verification</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 40px;
+            background: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          }
+          .success-icon {
+            color: #4caf50;
+            font-size: 64px;
+            margin-bottom: 20px;
+          }
+          h1 {
+            color: #333;
+          }
+          p {
+            color: #666;
+            margin-bottom: 20px;
+          }
+          .button {
+            display: inline-block;
+            background-color: #4285f4;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-weight: bold;
+          }
+          .redirect-message {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #999;
+          }
+        </style>
+        <script>
+          // Auto redirect after 3 seconds
+          setTimeout(function() {
+            window.location.href = "${process.env.CLIENT_URL}/auth/login";
+          }, 3000);
+        </script>
+      </head>
+      <body>
+        <div class="container">
+          <div class="success-icon">✓</div>
+          <h1>Email Successfully Verified!</h1>
+          <p>Your account is now active and you can log in.</p>
+          <a href="${process.env.CLIENT_URL}/auth/login" class="button">Go to Login</a>
+          <p class="redirect-message">You will be redirected automatically in 3 seconds...</p>
+        </div>
+      </body>
+      </html>
+    `);
   } catch (err) {
-    res.status(400).json({ message: "Invalid or expired token" });
+    console.error("Error verifying email:", err);
+    
+    // HTML response for verification error
+    res.status(400).send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Verification Error</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 40px;
+            background: #f7f7f7;
+          }
+          .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          }
+          .error-icon {
+            color: #f44336;
+            font-size: 64px;
+            margin-bottom: 20px;
+          }
+          h1 {
+            color: #333;
+          }
+          p {
+            color: #666;
+            margin-bottom: 20px;
+          }
+          .button {
+            display: inline-block;
+            background-color: #4285f4;
+            color: white;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-weight: bold;
+          }
+          .redirect-message {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #999;
+          }
+        </style>
+        <script>
+          // Auto redirect after 5 seconds
+          setTimeout(function() {
+            window.location.href = "${process.env.CLIENT_URL}/auth/login";
+          }, 5000);
+        </script>
+      </head>
+      <body>
+        <div class="container">
+          <div class="error-icon">✗</div>
+          <h1>Verification Error</h1>
+          <p>There was an error with the verification process. The token may be expired or invalid.</p>
+          <a href="${process.env.CLIENT_URL}/auth/login" class="button">Go to Login Page</a>
+          <p class="redirect-message">You will be redirected automatically in 5 seconds...</p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 };
 
+/**
+ * Login user
+ * @route POST /api/auth/login
+ */
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
-
   try {
+    const { email, password } = req.body;
+
+    // Check if user exists
     const user = await User.findOne({ email });
-    if (!user) return res.status(400).json({ message: "User not found" });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
-
-    if (!user.isVerified) {
-      return res.status(401).json({ message: "Please verify your email before logging in." });
+    if (!user) {
+      return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    // Check if user is verified
+    if (!user.isVerified) {
+      return res.status(400).json({ message: "Please verify your email before logging in" });
+    }
 
-    // დავაბრუნოთ მეტი ინფორმაცია მომხმარებლის შესახებ
-    res.status(200).json({
-      message: "Login successful",
-      token,
+    // Validate password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+
+    // Create and return JWT token
+    const payload = {
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        secondName: user.secondName,
-        phone: user.phone,
-        personalNumber: user.personalNumber,
-        dateOfBirth: user.dateOfBirth,
-        isVerified: user.isVerified
+        id: user.id
       }
-    });
+    };
+
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' },
+      (err, token) => {
+        if (err) throw err;
+        res.json({ 
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            secondName: user.secondName,
+            email: user.email,
+            isVerified: user.isVerified
+          }
+        });
+      }
+    );
   } catch (err) {
-    console.error(err);
-    res.status(500).send("Server error");
+    console.error("Error logging in:", err);
+    res.status(500).json({ message: "Server error" });
   }
 };

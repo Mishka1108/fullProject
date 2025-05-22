@@ -1,36 +1,50 @@
-//controllers/adminAuth.js
-const jwt = require("jsonwebtoken");
-const Admin = require("../models/Admin");
+// middleware/adminAuth.js
+const jwt = require('jsonwebtoken');
+const Admin = require('../models/Admin');
 
-exports.verifyAdminToken = async (req, res, next) => {
-  // ვიღებთ ტოკენს Authorization ჰედერიდან
-  const token = req.header("Authorization")?.split(" ")[1];
-  
-  if (!token) {
-    return res.status(401).json({ message: "ავტორიზაცია აუცილებელია" });
-  }
-
+module.exports = async (req, res, next) => {
   try {
-    // ვამოწმებთ ტოკენის ვალიდურობას
+    // ტოკენის მიღება ჰედერიდან
+    const authHeader = req.header('Authorization');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+    
+    const token = authHeader.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+    
+    // ტოკენის ვერიფიკაცია
     const decoded = jwt.verify(token, process.env.ADMIN_JWT_SECRET);
     
-    // ვამოწმებთ რომ ეს ადმინი არსებობს მონაცემთა ბაზაში
-    const admin = await Admin.findById(decoded.id);
+    // ადმინის მოძებნა
+    const admin = await Admin.findById(decoded.id).select('-password');
     
     if (!admin) {
-      return res.status(401).json({ message: "ადმინი ვერ მოიძებნა" });
+      return res.status(401).json({ message: 'Token is not valid or admin not found' });
     }
     
-    // თუ როლი არის ადმინი
-    if (decoded.role !== 'admin') {
-      return res.status(403).json({ message: "წვდომა აკრძალულია. მხოლოდ ადმინისთვის" });
-    }
+    // მოთხოვნაში ადმინის ინფორმაციის დამატება
+    req.admin = {
+      id: admin._id,
+      role: admin.role
+    };
     
-    // ვუნახავთ ადმინის ინფორმაციას რექუესტში მომდევნო მიდლვეარებისთვის
-    req.admin = decoded;
     next();
   } catch (error) {
-    console.error("ადმინის ტოკენის ვერიფიკაციის შეცდომა:", error);
-    res.status(401).json({ message: "არავალიდური ტოკენი" });
+    console.error('Admin auth middleware error:', error);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Token has expired' });
+    }
+    
+    res.status(500).json({ message: 'Server error' });
   }
 };

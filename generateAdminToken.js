@@ -1,11 +1,27 @@
-// generateAdminToken.js
+const express = require("express");
 const jwt = require("jsonwebtoken");
+const router = express.Router();
 
-const adminToken = jwt.sign(
-  { role: "admin" },
-  "your_admin_jwt_secret_key_should_be_different", // იგივე რაც .env-ში გაქვს
-  { expiresIn: "7d" }
-);
+// დაცული POST API admin token-ის გენერაციისთვის
+router.post("/", (req, res) => {
+  const { secretCode } = req.body;
 
-console.log("Your admin token:");
-console.log(adminToken);
+  // .env-ში უნდა გქონდეს ეს პარამეტრი
+  if (secretCode !== process.env.ADMIN_SECRET_CODE) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+
+  try {
+    const token = jwt.sign(
+      { role: "admin" },
+      process.env.ADMIN_JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({ token });
+  } catch (error) {
+    res.status(500).json({ message: "Token generation failed", error });
+  }
+});
+
+module.exports = router;

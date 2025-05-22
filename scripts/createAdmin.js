@@ -6,9 +6,9 @@ const Admin = require('../models/Admin');
 
 // მონაცემები პირველი ადმინისთვის
 const adminData = {
-  username: 'admin  ',
+  username: 'admin',
   email: 'admin@example.com',
-  password: 'lovelika', // ეს პაროლი აუცილებლად უნდა შეიცვალოს შემდეგ!
+  password: 'lika', // ეს პაროლი აუცილებლად უნდა შეიცვალოს შემდეგ!
   role: 'admin'
 };
 
