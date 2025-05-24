@@ -10,21 +10,73 @@ const sendEmail = require('../utils/sendEmail');
  */
 exports.register = async (req, res) => {
   try {
-    const { name, secondName, email, password } = req.body;
+    const { name, secondName, email, password, phone, personalNumber, dateOfBirth } = req.body;
+
+    // Required fields validation
+    if (!name || !secondName || !email || !password) {
+      return res.status(400).json({ 
+        message: "სახელი, გვარი, ელ-ფოსტა და პაროლი სავალდებულოა" 
+      });
+    }
 
     // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
-      return res.status(400).json({ message: "User already exists" });
+      return res.status(400).json({ message: "ამ ელ-ფოსტით უკვე არსებობს მომხმარებელი" });
     }
 
-    // Create new user
-    user = new User({
-      name,
-      secondName,
-      email,
+    // Check if phone number already exists (if provided)
+    if (phone) {
+      const phoneExists = await User.findOne({ phone });
+      if (phoneExists) {
+        return res.status(400).json({ message: "ეს ტელეფონის ნომერი უკვე გამოყენებულია" });
+      }
+    }
+
+    // Check if personal number already exists (if provided)
+    if (personalNumber) {
+      const personalNumExists = await User.findOne({ personalNumber });
+      if (personalNumExists) {
+        return res.status(400).json({ message: "ეს პირადი ნომერი უკვე გამოყენებულია" });
+      }
+    }
+
+    // Additional validations
+    if (phone && !/^\+?[0-9]{9,15}$/.test(phone.toString())) {
+      return res.status(400).json({ message: "ტელეფონის ნომერი არასწორია" });
+    }
+
+    if (personalNumber && !/^[0-9]{11}$/.test(personalNumber.toString())) {
+      return res.status(400).json({ message: "პირადი ნომერი უნდა შედგებოდეს 11 ციფრისგან" });
+    }
+
+    if (dateOfBirth) {
+      const birthDate = new Date(dateOfBirth);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      
+      if (birthDate > today) {
+        return res.status(400).json({ message: "დაბადების თარიღი არ შეიძლება იყოს მომავალში" });
+      } else if (age < 13) {
+        return res.status(400).json({ message: "ასაკი უნდა იყოს მინიმუმ 13 წელი" });
+      }
+    }
+
+    // Create user data object
+    const userData = {
+      name: name.trim(),
+      secondName: secondName.trim(),
+      email: email.trim().toLowerCase(),
       password
-    });
+    };
+
+    // Add optional fields if provided
+    if (phone) userData.phone = phone;
+    if (personalNumber) userData.personalNumber = personalNumber;
+    if (dateOfBirth) userData.dateOfBirth = new Date(dateOfBirth);
+
+    // Create new user
+    user = new User(userData);
 
     // Hash password before saving
     const salt = await bcrypt.genSalt(10);
@@ -50,11 +102,37 @@ exports.register = async (req, res) => {
     );
 
     res.status(201).json({ 
-      message: "User registered successfully. Please verify your email." 
+      message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ გადაამოწმოთ თქვენი ელ-ფოსტა." 
     });
   } catch (err) {
     console.error("Error registering user:", err);
-    res.status(500).json({ message: "Server error" });
+    
+    // Handle MongoDB validation errors
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(val => val.message);
+      return res.status(400).json({
+        message: 'ვალიდაციის შეცდომა',
+        errors: messages
+      });
+    }
+    
+    // Handle duplicate key errors
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue)[0];
+      let message = 'ამ მონაცემებით უკვე არსებობს მომხმარებელი';
+      
+      if (field === 'email') {
+        message = 'ამ ელ-ფოსტით უკვე არსებობს მომხმარებელი';
+      } else if (field === 'phone') {
+        message = 'ეს ტელეფონის ნომერი უკვე გამოყენებულია';
+      } else if (field === 'personalNumber') {
+        message = 'ეს პირადი ნომერი უკვე გამოყენებულია';
+      }
+      
+      return res.status(400).json({ message });
+    }
+    
+    res.status(500).json({ message: "სერვერის შეცდომა" });
   }
 };
 
@@ -134,10 +212,10 @@ exports.verifyEmail = async (req, res) => {
       <body>
         <div class="container">
           <div class="success-icon">✓</div>
-          <h1>Email Successfully Verified!</h1>
-          <p>Your account is now active and you can log in.</p>
-          <a href="${process.env.CLIENT_URL}/auth/login" class="button">Go to Login</a>
-          <p class="redirect-message">You will be redirected automatically in 3 seconds...</p>
+          <h1>ელ-ფოსტა წარმატებით დადასტურდა!</h1>
+          <p>თქვენი ანგარიში ახლა აქტიურია და შეგიძლიათ შესვლა.</p>
+          <a href="${process.env.CLIENT_URL}/auth/login" class="button">შესვლაზე გადასვლა</a>
+          <p class="redirect-message">3 წამში ავტომატურად გადაგიყვანთ...</p>
         </div>
       </body>
       </html>
@@ -205,10 +283,10 @@ exports.verifyEmail = async (req, res) => {
       <body>
         <div class="container">
           <div class="error-icon">✗</div>
-          <h1>Verification Error</h1>
-          <p>There was an error with the verification process. The token may be expired or invalid.</p>
-          <a href="${process.env.CLIENT_URL}/auth/login" class="button">Go to Login Page</a>
-          <p class="redirect-message">You will be redirected automatically in 5 seconds...</p>
+          <h1>დადასტურების შეცდომა</h1>
+          <p>დადასტურების პროცესში მოხდა შეცდომა. ტოკენი შეიძლება იყოს ვადაგასული ან არასწორი.</p>
+          <a href="${process.env.CLIENT_URL}/auth/login" class="button">შესვლის გვერდზე გადასვლა</a>
+          <p class="redirect-message">5 წამში ავტომატურად გადაგიყვანთ...</p>
         </div>
       </body>
       </html>
@@ -225,20 +303,20 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     // Check if user exists
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: "არასწორი ელ-ფოსტა ან პაროლი" });
     }
 
     // Check if user is verified
     if (!user.isVerified) {
-      return res.status(400).json({ message: "Please verify your email before logging in" });
+      return res.status(400).json({ message: "გთხოვთ დაადასტუროთ თქვენი ელ-ფოსტა შესვლამდე" });
     }
 
     // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json({ message: "არასწორი ელ-ფოსტა ან პაროლი" });
     }
 
     // Create and return JWT token
@@ -261,13 +339,17 @@ exports.login = async (req, res) => {
             name: user.name,
             secondName: user.secondName,
             email: user.email,
-            isVerified: user.isVerified
+            phone: user.phone,
+            personalNumber: user.personalNumber,
+            dateOfBirth: user.dateOfBirth,
+            isVerified: user.isVerified,
+            profileImage: user.profileImage
           }
         });
       }
     );
   } catch (err) {
     console.error("Error logging in:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "სერვერის შეცდომა" });
   }
 };

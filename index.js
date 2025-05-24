@@ -4,8 +4,6 @@ const dotenv = require("dotenv");
 const cors = require("cors");
 const path = require("path");
 
-const adminRoutes = require('./routes/admin');
-
 dotenv.config();
 
 // Express აპი
@@ -27,15 +25,11 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/admin", require("./routes/admin"));
-app.use("/api/admin", require("./routes/user.js")); // Admin რეგისტრაცია
-app.use("/api/admin-auth", require("./routes/admin")); // Admin ავტორიზაცია
-app.use("/api/users", require("./routes/user"));
+app.use("/api/auth", require("./routes/auth")); // User auth
+app.use("/api/admin", require("./routes/admin")); // Admin ფუნქციები
+app.use("/api/users", require("./routes/user")); // ჩვეულებრივი მომხმარებლები - ეს იყო მთავარი პრობლემა
 app.use("/api/products", require("./routes/product"));
 app.use("/api/contact", require("./routes/contactRoutes"));
-app.use("/api/generate-admin-token", require("./generateAdminToken")); // Admin Token გენერაცია
-app.use("/api/admin", adminRoutes);
 
 // Static files (production only)
 if (process.env.NODE_ENV === 'production') {
