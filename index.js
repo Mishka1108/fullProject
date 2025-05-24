@@ -14,16 +14,13 @@ mongoose.set('strictQuery', true);
 
 // CORS კონფიგურაცია
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:4200',
+  origin: process.env.CLIENT_URL || 'https://market-zone.netlify.app/',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
 
-app.use(cors({
-  origin: 'https://market-zone.netlify.app/',
-  credentials: true // თუ იყენებ cookies ან Authorization headers
-}));
+
 
 // Middleware-ები
 app.use(express.json({ limit: '50mb' }));
