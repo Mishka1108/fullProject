@@ -14,7 +14,7 @@ mongoose.set('strictQuery', true);
 
 // CORS კონფიგურაცია
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'https://market-zone.netlify.app/',
+  origin: process.env.CLIENT_URL || 'https://market-zone.netlify.app',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
