@@ -1,4 +1,3 @@
-// controllers/authController.js
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -8,23 +7,34 @@ const sendEmail = require('../utils/sendEmail');
  * Register a new user
  * @route POST /api/auth/register
  */
-exports.register = async (req, res) => {
+const register = async (req, res) => {
+  console.log("=== REGISTRATION START ===");
+  console.log("Request body:", req.body);
+  
   try {
     const { name, secondName, email, password, phone, personalNumber, dateOfBirth } = req.body;
 
+    console.log("Step 1: Validation started");
+    
     // Required fields validation
     if (!name || !secondName || !email || !password) {
+      console.log("Validation failed: Missing required fields");
       return res.status(400).json({ 
         message: "სახელი, გვარი, ელ-ფოსტა და პაროლი სავალდებულოა" 
       });
     }
 
+    console.log("Step 2: Checking existing user");
+    
     // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
+      console.log("User already exists with email:", email);
       return res.status(400).json({ message: "ამ ელ-ფოსტით უკვე არსებობს მომხმარებელი" });
     }
 
+    console.log("Step 3: Additional validations");
+    
     // Check if phone number already exists (if provided)
     if (phone) {
       const phoneExists = await User.findOne({ phone });
@@ -62,6 +72,8 @@ exports.register = async (req, res) => {
       }
     }
 
+    console.log("Step 4: Creating user data");
+    
     // Create user data object
     const userData = {
       name: name.trim(),
@@ -75,14 +87,22 @@ exports.register = async (req, res) => {
     if (personalNumber) userData.personalNumber = personalNumber;
     if (dateOfBirth) userData.dateOfBirth = new Date(dateOfBirth);
 
+    console.log("Step 5: Creating new user instance");
+    
     // Create new user
     user = new User(userData);
 
+    console.log("Step 6: Hashing password");
+    
     // Hash password before saving
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
 
+    console.log("Step 7: Saving user to database");
+    
     await user.save();
+    
+    console.log("Step 8: User saved successfully, ID:", user._id);
 
     // Create email verification token
     const emailToken = jwt.sign(
@@ -91,21 +111,44 @@ exports.register = async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    // Verification URL
-    const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
+    console.log("Step 9: Email token created");
 
-    // Send verification email
-    await sendEmail(
-      email,
-      "Email Verification",
-      `Click here to verify: ${verificationUrl}`
-    );
+    // Email verification enabled
+    try {
+      // Verification URL
+      const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
 
-    res.status(201).json({ 
-      message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ გადაამოწმოთ თქვენი ელ-ფოსტა." 
-    });
+      // Send verification email
+      await sendEmail(
+        email,
+        "ელფოსტის ვერიფიკაცია",
+        verificationUrl // URL იგზავნება როგორც message
+      );
+
+      console.log("Step 10: Verification email sent successfully");
+
+      res.status(201).json({ 
+        message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ შეამოწმოთ თქვენი ელფოსტა ვერიფიკაციის ბმულისთვის.",
+        userId: user._id
+      });
+
+    } catch (emailError) {
+      console.error("Error sending verification email:", emailError);
+      
+      // If email fails, still return success but with different message
+      res.status(201).json({ 
+        message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ ვერიფიკაციის ელფოსტა ვერ გაიგზავნა. გთხოვთ სცადოთ ხელახლა ან დაუკავშირდით მხარდაჭერას.",
+        userId: user._id,
+        emailError: true
+      });
+    }
+    
   } catch (err) {
-    console.error("Error registering user:", err);
+    console.error("=== REGISTRATION ERROR ===");
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+    console.error("Error name:", err.name);
+    console.error("Error code:", err.code);
     
     // Handle MongoDB validation errors
     if (err.name === 'ValidationError') {
@@ -132,6 +175,53 @@ exports.register = async (req, res) => {
       return res.status(400).json({ message });
     }
     
+    res.status(500).json({ message: "სერვერის შეცდომა", error: err.message });
+  }
+};
+
+/**
+ * Resend verification email
+ * @route POST /api/auth/resend-verification
+ */
+const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "ელ-ფოსტა სავალდებულოა" });
+    }
+
+    // Find user
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user) {
+      return res.status(400).json({ message: "მომხმარებელი ვერ მოიძებნა" });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({ message: "ელ-ფოსტა უკვე ვერიფიცირებულია" });
+    }
+
+    // Create new verification token
+    const emailToken = jwt.sign(
+      { id: user._id },
+      process.env.EMAIL_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    // Verification URL
+    const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
+
+    // Send verification email
+    await sendEmail(
+      email,
+      "ელფოსტის ვერიფიკაცია",
+      verificationUrl
+    );
+
+    res.json({ message: "ვერიფიკაციის ელფოსტა ხელახლა გაიგზავნა" });
+
+  } catch (err) {
+    console.error("Error resending verification:", err);
     res.status(500).json({ message: "სერვერის შეცდომა" });
   }
 };
@@ -140,7 +230,7 @@ exports.register = async (req, res) => {
  * Verify user email with token
  * @route GET /api/auth/verify/:token
  */
-exports.verifyEmail = async (req, res) => {
+const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
     const decoded = jwt.verify(token, process.env.EMAIL_SECRET);
@@ -203,7 +293,6 @@ exports.verifyEmail = async (req, res) => {
           }
         </style>
         <script>
-          // Auto redirect after 3 seconds
           setTimeout(function() {
             window.location.href = "${process.env.CLIENT_URL}/auth/login";
           }, 3000);
@@ -222,75 +311,7 @@ exports.verifyEmail = async (req, res) => {
     `);
   } catch (err) {
     console.error("Error verifying email:", err);
-    
-    // HTML response for verification error
-    res.status(400).send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Verification Error</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 40px;
-            background: #f7f7f7;
-          }
-          .container {
-            max-width: 600px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-          }
-          .error-icon {
-            color: #f44336;
-            font-size: 64px;
-            margin-bottom: 20px;
-          }
-          h1 {
-            color: #333;
-          }
-          p {
-            color: #666;
-            margin-bottom: 20px;
-          }
-          .button {
-            display: inline-block;
-            background-color: #4285f4;
-            color: white;
-            text-decoration: none;
-            padding: 12px 24px;
-            border-radius: 4px;
-            font-weight: bold;
-          }
-          .redirect-message {
-            margin-top: 20px;
-            font-size: 14px;
-            color: #999;
-          }
-        </style>
-        <script>
-          // Auto redirect after 5 seconds
-          setTimeout(function() {
-            window.location.href = "${process.env.CLIENT_URL}/auth/login";
-          }, 5000);
-        </script>
-      </head>
-      <body>
-        <div class="container">
-          <div class="error-icon">✗</div>
-          <h1>დადასტურების შეცდომა</h1>
-          <p>დადასტურების პროცესში მოხდა შეცდომა. ტოკენი შეიძლება იყოს ვადაგასული ან არასწორი.</p>
-          <a href="${process.env.CLIENT_URL}/auth/login" class="button">შესვლის გვერდზე გადასვლა</a>
-          <p class="redirect-message">5 წამში ავტომატურად გადაგიყვანთ...</p>
-        </div>
-      </body>
-      </html>
-    `);
+    res.status(400).send(`Error verifying email`);
   }
 };
 
@@ -298,7 +319,7 @@ exports.verifyEmail = async (req, res) => {
  * Login user
  * @route POST /api/auth/login
  */
-exports.login = async (req, res) => {
+const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -310,7 +331,11 @@ exports.login = async (req, res) => {
 
     // Check if user is verified
     if (!user.isVerified) {
-      return res.status(400).json({ message: "გთხოვთ დაადასტუროთ თქვენი ელ-ფოსტა შესვლამდე" });
+      return res.status(400).json({ 
+        message: "გთხოვთ დაადასტუროთ თქვენი ელ-ფოსტა შესვლამდე",
+        needsVerification: true,
+        email: user.email
+      });
     }
 
     // Validate password
@@ -352,4 +377,12 @@ exports.login = async (req, res) => {
     console.error("Error logging in:", err);
     res.status(500).json({ message: "სერვერის შეცდომა" });
   }
+};
+
+// PROPER EXPORTS
+module.exports = {
+  register,
+  verifyEmail,
+  login,
+  resendVerification
 };
