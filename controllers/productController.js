@@ -1,4 +1,5 @@
 //controllers/productController.js
+
 const Product = require('../models/product');
 const cloudinary = require('../utils/cloudinary');
 const User = require('../models/User');
@@ -9,7 +10,6 @@ exports.addProduct = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'პროდუქტის სურათი აუცილებელია' });
     }
-
     // მივიღოთ ატვირთული სურათის URL
     const imageUrl = req.file.path;
     
@@ -23,7 +23,8 @@ exports.addProduct = async (req, res) => {
       description: req.body.description,
       image: imageUrl,
       location: req.body.location,
-      phone: req.body.phone
+      phone: req.body.phone,
+      email: req.body.email
     });
 
     res.status(201).json({
@@ -81,8 +82,6 @@ exports.deleteProduct = async (req, res) => {
   }
 };
 
-// ახალი ფუნქციები საჯარო წვდომისთვის
-
 // ყველა პროდუქტის მიღება
 exports.getAllProducts = async (req, res) => {
   try {
@@ -135,7 +134,7 @@ exports.getAllProducts = async (req, res) => {
   }
 };
 
-// კონკრეტული პროდუქტის მიღება ID-ით
+// კონკრეტული პროდუქტის მიღება ID-ით - FIXED VERSION
 exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -147,11 +146,31 @@ exports.getProductById = async (req, res) => {
     // მივიღოთ პროდუქტის ავტორის ინფორმაცია
     const user = await User.findById(product.userId).select('name secondName profileImage');
     
+    // შემოვიღოთ სრული contact ინფორმაცია
     const productWithUserInfo = {
       ...product._doc,
+      // User ინფორმაცია
       userName: user ? `${user.name} ${user.secondName}` : 'უცნობი მომხმარებელი',
-      userProfileImage: user ? user.profileImage : null
+      userProfileImage: user ? user.profileImage : null,
+      
+      // Contact ინფორმაცია პროდუქტიდან (ეს არის ის რაც form-ში შევისავთ)
+      // product-ში უკვე არის email და phone fields
+      // ამიტომ ისინი ავტომატურად გადავა frontend-ზე
+      
+      // Debug information
+      sellerEmail: product.email, // Explicit mapping
+      sellerPhone: product.phone, // Explicit mapping
+      sellerName: user ? `${user.name} ${user.secondName}` : 'უცნობი მომხმარებელი'
     };
+    
+    console.log('Product with contact info:', {
+      id: productWithUserInfo._id,
+      email: productWithUserInfo.email,
+      phone: productWithUserInfo.phone,
+      sellerEmail: productWithUserInfo.sellerEmail,
+      sellerPhone: productWithUserInfo.sellerPhone,
+      userName: productWithUserInfo.userName
+    });
     
     res.status(200).json({
       success: true,
