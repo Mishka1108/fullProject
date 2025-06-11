@@ -2,7 +2,6 @@ const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
-const path = require("path");
 
 dotenv.config();
 
@@ -18,13 +17,35 @@ app.get('/health', (req, res) => {
     status: 'alive', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    memory: process.memoryUsage()
+    memory: process.memoryUsage(),
+    service: 'MarketZone API'
+  });
+});
+
+// Root endpoint - API info
+app.get('/', (req, res) => {
+  res.json({
+    message: 'MarketZone API Server',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      auth: '/api/auth',
+      admin: '/api/admin', 
+      users: '/api/users',
+      products: '/api/products',
+      contact: '/api/contact'
+    }
   });
 });
 
 // CORS კონფიგურაცია
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'https://market-zone.netlify.app',
+  origin: [
+    'https://market-zone.netlify.app',
+    'http://localhost:4200', // Development-ისთვის
+    process.env.CLIENT_URL
+  ].filter(Boolean),
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -42,20 +63,12 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Routes
+// API Routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/users", require("./routes/user"));
 app.use("/api/products", require("./routes/product"));
 app.use("/api/contact", require("./routes/contactRoutes"));
-
-// Static files (production only)
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static('client/dist'));
-  app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, 'client', 'dist', 'index.html'));
-  });
-}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -66,21 +79,35 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Handle 404
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// Handle 404 for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ 
+    error: 'API endpoint not found',
+    path: req.path 
+  });
+});
+
+// Handle all other routes - redirect to frontend
+app.use('*', (req, res) => {
+  res.status(200).json({
+    message: 'This is the API server only',
+    frontend: 'https://market-zone.netlify.app',
+    api_docs: req.protocol + '://' + req.get('host') + '/'
+  });
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
-    mongoose.connection.close(false, () => {
-      console.log('MongoDB connection closed');
-      process.exit(0);
+  if (global.server) {
+    global.server.close(() => {
+      console.log('HTTP server closed');
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
     });
-  });
+  }
 });
 
 // MongoDB კავშირი და სერვერის გაშვება
@@ -89,8 +116,9 @@ mongoose.connect(process.env.MONGO_URI)
     console.log("✅ MongoDB connected");
     const PORT = process.env.PORT || 5000;
     const server = app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 Health check available at: http://localhost:${PORT}/health`);
+      console.log(`🚀 API Server running on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`🌐 Frontend: https://market-zone.netlify.app`);
     });
 
     // Keep server reference for graceful shutdown
