@@ -43,6 +43,7 @@ app.get('/', (req, res) => {
 app.use(cors({
   origin: [
     'https://market-zone.netlify.app',
+    'https://www.imarketzone.ge',
     'http://localhost:4200', // Development-ისთვის
     process.env.CLIENT_URL
   ].filter(Boolean),
@@ -118,7 +119,7 @@ mongoose.connect(process.env.MONGO_URI)
     const server = app.listen(PORT, () => {
       console.log(`🚀 API Server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`🌐 Frontend: https://market-zone.netlify.app`);
+      console.log(`🌐 Frontend: https://www.imarketzone.ge`);
     });
 
     // Keep server reference for graceful shutdown

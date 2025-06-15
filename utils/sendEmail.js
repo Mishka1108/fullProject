@@ -41,7 +41,7 @@ const sendVerificationEmail = async (to, subject, verificationUrl) => {
   
   // Environment variables
   const siteName = process.env.SITE_NAME || 'MarketZone';
-  const siteUrl = process.env.BASE_URL || 'http://localhost:10000';
+  const siteUrl = process.env.BASE_URL || 'https://fullproject-xtbq.onrender.com';
   const supportEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
   
   // Clean HTML Template - Anti-Spam Optimized
