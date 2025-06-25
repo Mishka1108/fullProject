@@ -118,17 +118,17 @@ const register = async (req, res) => {
       // Verification URL
       const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
 
-      // Send verification email
+      // Send verification email - შეცვლილია სპამის თავიდან ასაცილებლად
       await sendEmail(
         email,
-        "ელფოსტის ვერიფიკაცია",
-        verificationUrl // URL იგზავნება როგორც message
+        "ანგარიშის გააქტიურება", // ძველი: "ელფოსტის ვერიფიკაცია"
+        verificationUrl
       );
 
       console.log("Step 10: Verification email sent successfully");
 
       res.status(201).json({ 
-        message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ შეამოწმოთ თქვენი ელფოსტა ვერიფიკაციის ბმულისთვის.",
+        message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ შეამოწმოთ თქვენი ელფოსტა გააქტიურების ბმულისთვის.",
         userId: user._id
       });
 
@@ -137,7 +137,7 @@ const register = async (req, res) => {
       
       // If email fails, still return success but with different message
       res.status(201).json({ 
-        message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ ვერიფიკაციის ელფოსტა ვერ გაიგზავნა. გთხოვთ სცადოთ ხელახლა ან დაუკავშირდით მხარდაჭერას.",
+        message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ გააქტიურების ელფოსტა ვერ გაიგზავნა. გთხოვთ სცადოთ ხელახლა ან დაუკავშირდით მხარდაჭერას.",
         userId: user._id,
         emailError: true
       });
@@ -211,14 +211,14 @@ const resendVerification = async (req, res) => {
     // Verification URL
     const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
 
-    // Send verification email
+    // Send verification email - შეცვლილია სპამის თავიდან ასაცილებლად
     await sendEmail(
       email,
-      "ელფოსტის ვერიფიკაცია",
+      "ანგარიშის გააქტიურება", // ძველი: "ელფოსტის ვერიფიკაცია"
       verificationUrl
     );
 
-    res.json({ message: "ვერიფიკაციის ელფოსტა ხელახლა გაიგზავნა" });
+    res.json({ message: "გააქტიურების ელფოსტა ხელახლა გაიგზავნა" });
 
   } catch (err) {
     console.error("Error resending verification:", err);
