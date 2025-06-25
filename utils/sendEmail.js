@@ -8,7 +8,7 @@ require('dotenv').config();
  */
 
 const createTransporter = () => {
-  return nodemailer.createTransporter({
+  return nodemailer.createTransport({ // ← ესაა გასწორება: createTransport (არა createTransporter)
     service: 'gmail', // მნიშვნელოვანია service-ის გამოყენება
     auth: {
       user: process.env.EMAIL_USER,
