@@ -6,7 +6,13 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test-email.js",
+    "test-quick": "node test-email.js quick",
+    "test-email": "node test-email.js",
+    "email-test": "node test-email.js your-email@gmail.com",
+    "check-smtp": "node -e \"require('./test-email.js').testSMTPConnection()\"",
+    "check-env": "node -e \"require('./test-email.js').checkEnvironment()\"",
+    "send-test": "node -e \"require('./utils/sendEmail').sendEmail('test@example.com', 'Test', 'Test message').then(console.log).catch(console.error)\""
   },
   "keywords": [],
   "author": "",
@@ -15,7 +21,7 @@
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
-    "dotenv": "^16.5.0",
+    "dotenv": "^16.6.1",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.13.2",

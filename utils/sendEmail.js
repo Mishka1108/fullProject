@@ -1,211 +1,3 @@
-// // utils/sendEmail.js
-// const nodemailer = require('nodemailer');
-// require('dotenv').config();
-
-// /**
-//  * ოპტიმიზებული ელფოსტის გაგზავნის სერვისი
-//  * სპამში არმოხვედრის თავიდან ასაცილებლად
-//  */
-
-// const createTransporter = () => {
-//   return nodemailer.createTransport({ // ← ესაა გასწორება: createTransport (არა createTransporter)
-//     service: 'gmail', // მნიშვნელოვანია service-ის გამოყენება
-//     auth: {
-//       user: process.env.EMAIL_USER,
-//       pass: process.env.EMAIL_PASS // App Password არა regular password
-//     },
-//     // ამ პარამეტრების მოშორება ზოგჯერ უშველის
-//     tls: {
-//       rejectUnauthorized: false
-//     }
-//   });
-// };
-
-// /**
-//  * ვერიფიკაციის ელფოსტის გაგზავნა
-//  */
-// const sendVerificationEmail = async (to, subject, verificationUrl) => {
-//   const transporter = createTransporter();
-  
-//   const siteName = process.env.SITE_NAME || 'MarketZone';
-//   const supportEmail = process.env.EMAIL_USER; // არა ADMIN_EMAIL
-  
-//   // ᲡᲞᲐᲛᲘᲡ ᲗᲐᲕᲘᲓᲐᲜ ᲐᲪᲘᲚᲔᲑᲘᲡ ᲫᲘᲠᲘᲗᲐᲓᲘ ᲠᲩᲔᲕᲔᲑᲘ:
-  
-//   // 1. მარტივი HTML Template (ზედმეტი styles-ების გარეშე)
-//   const htmlContent = `
-// <!DOCTYPE html>
-// <html>
-// <head>
-//     <meta charset="utf-8">
-//     <title>ელფოსტის ვერიფიკაცია</title>
-// </head>
-// <body style="font-family: Arial, sans-serif; background-color: #f5f5f5; padding: 20px;">
-//     <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 5px;">
-        
-//         <h2 style="color: #333; text-align: center;">ანგარიშის ვერიფიკაცია</h2>
-        
-//         <p>გამარჯობა,</p>
-        
-//         <p>მადლობა რეგისტრაციისთვის! თქვენი ანგარიშის გასააქტიურებლად გთხოვთ დააკლიკოთ ქვემო ღილაკზე:</p>
-        
-//         <div style="text-align: center; margin: 30px 0;">
-//             <a href="${verificationUrl}" 
-//                style="background-color: #007bff; color: white; text-decoration: none; padding: 12px 30px; border-radius: 4px; display: inline-block;">
-//                ანგარიშის გააქტიურება
-//             </a>
-//         </div>
-        
-//         <p>ალტერნატიულად, ჩასვით ეს ლინკი ბრაუზერში:</p>
-//         <p style="word-break: break-all; background-color: #f8f9fa; padding: 10px; border-radius: 3px;">
-//             ${verificationUrl}
-//         </p>
-        
-//         <hr style="border: 1px solid #eee; margin: 30px 0;">
-        
-//         <p style="font-size: 12px; color: #666;">
-//             ეს ლინკი მოქმედია 24 საათის განმავლობაში.<br>
-//             თუ თქვენ არ მოითხოვეთ ეს ვერიფიკაცია, უგულებელყავით ეს ელფოსტა.
-//         </p>
-        
-//         <p style="font-size: 12px; color: #666;">
-//             მადლობა,<br>
-//             ${siteName} გუნდი
-//         </p>
-        
-//     </div>
-// </body>
-// </html>`;
-
-//   // 2. Plain text version (ძალიან მნიშვნელოვანია!)
-//   const textContent = `
-// ანგარიშის ვერიფიკაცია
-
-// გამარჯობა,
-
-// მადლობა რეგისტრაციისთვის! თქვენი ანგარიშის გასააქტიურებლად გადადით შემდეგ ლინკზე:
-
-// ${verificationUrl}
-
-// ეს ლინკი მოქმედია 24 საათის განმავლობაში.
-
-// თუ თქვენ არ მოითხოვეთ ეს ვერიფიკაცია, უგულებელყავით ეს ელფოსტა.
-
-// მადლობა,
-// ${siteName} გუნდი
-// `;
-
-//   // 3. ოპტიმიზებული Mail Options
-//   const mailOptions = {
-//     from: `"${siteName}" <${process.env.EMAIL_USER}>`, // ამ ფორმატის გამოყენება
-//     to: to,
-//     subject: 'ანგარიშის გააქტიურება', // მარტივი subject
-//     text: textContent, // ძალიან მნიშვნელოვანია!
-//     html: htmlContent
-//   };
-
-//   try {
-//     console.log('ელფოსტის გაგზავნა...');
-//     const info = await transporter.sendMail(mailOptions);
-    
-//     console.log('✓ ელფოსტა წარმატებით გაიგზავნა:', info.messageId);
-    
-//     return { 
-//       success: true, 
-//       messageId: info.messageId
-//     };
-    
-//   } catch (error) {
-//     console.error('❌ შეცდომა ელფოსტის გაგზავნისას:', error);
-//     throw error;
-    
-//   } finally {
-//     transporter.close();
-//   }
-// };
-
-// /**
-//  * ზოგადი ელფოსტის გაგზავნის ფუნქცია
-//  */
-// const sendEmail = async (to, subject, message, html = null) => {
-//   if (!to || !subject || !message) {
-//     throw new Error('საჭირო პარამეტრები არ არის მითითებული');
-//   }
-
-//   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-//   if (!emailRegex.test(to)) {
-//     throw new Error('არასწორი ელფოსტის ფორმატი');
-//   }
-
-//   // ვერიფიკაციის ელფოსტისთვის სპეციალური მეთოდი
-//   if (subject.toLowerCase().includes('verify') || 
-//       subject.toLowerCase().includes('ვერიფიკაცია') ||
-//       subject.toLowerCase().includes('verification') ||
-//       message.includes('http')) {
-    
-//     let verificationUrl = message;
-    
-//     if (message.includes('http')) {
-//       const urlMatch = message.match(/(https?:\/\/[^\s]+)/);
-//       if (urlMatch) {
-//         verificationUrl = urlMatch[1];
-//       }
-//     }
-    
-//     return sendVerificationEmail(to, subject, verificationUrl);
-//   }
-
-//   // რეგულარული ელფოსტებისთვის
-//   const transporter = createTransporter();
-//   const siteName = process.env.SITE_NAME || 'MarketZone';
-
-//   const mailOptions = {
-//     from: `"${siteName}" <${process.env.EMAIL_USER}>`,
-//     to: to,
-//     subject: subject,
-//     text: message,
-//     html: html || `
-// <!DOCTYPE html>
-// <html>
-// <head>
-//     <meta charset="utf-8">
-//     <title>${subject}</title>
-// </head>
-// <body style="font-family: Arial, sans-serif; padding: 20px;">
-//     <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 20px;">
-//         <h2>${subject}</h2>
-//         <div>${message.replace(/\n/g, '<br>')}</div>
-//         <hr>
-//         <p style="font-size: 12px; color: #666;">
-//             მადლობა,<br>
-//             ${siteName} გუნდი
-//         </p>
-//     </div>
-// </body>
-// </html>`
-//   };
-
-//   try {
-//     const info = await transporter.sendMail(mailOptions);
-//     console.log('✓ ელფოსტა წარმატებით გაიგზავნა:', info.messageId);
-    
-//     return { 
-//       success: true, 
-//       messageId: info.messageId
-//     };
-    
-//   } catch (error) {
-//     console.error('❌ შეცდომა ელფოსტის გაგზავნისას:', error);
-//     throw error;
-    
-//   } finally {
-//     transporter.close();
-//   }
-// };
-
-// module.exports = sendEmail;
-
-
 // utils/sendEmail.js
 const nodemailer = require('nodemailer');
 require('dotenv').config();
@@ -216,19 +8,24 @@ require('dotenv').config();
  */
 
 const createTransporter = () => {
-  return nodemailer.createTransport({
+  return nodemailer.createTransport({ // ✅ Fixed: createTransport (not createTransporter)
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS
-    },
-    // TLS კონფიგურაცია უბრალოდ ამოვშალოთ
-    // Gmail-ის default settings-ი საკმარისია
+    }
+    // Gmail-ის ოპტიმიზებული კონფიგურაცია
+    ,
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 10,
+    rateDelta: 1000,
+    rateLimit: 5
   });
 };
 
 /**
- * ვერიფიკაციის ელფოსტის გაგზავნა
+ * ვერიფიკაციის ელფოსტის გაგზავნა სპამ-ფილტრების გავლით
  */
 const sendVerificationEmail = async (to, subject, verificationUrl) => {
   const transporter = createTransporter();
@@ -243,53 +40,59 @@ const sendVerificationEmail = async (to, subject, verificationUrl) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ანგარიშის ვერიფიკაცია - ${siteName}</title>
+    <title>ანგარიშის ვერიფიკაცია</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background-color: #f8f9fa;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e9ecef;">
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background-color: #ffffff; color: #333333;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
         
         <!-- Header -->
-        <div style="background-color: #007bff; color: white; padding: 20px; text-align: center;">
-            <h1 style="margin: 0; font-size: 24px; font-weight: normal;">${siteName}</h1>
+        <div style="background-color: #4a90e2; color: white; padding: 30px 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 28px; font-weight: 600;">${siteName}</h1>
+            <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">ანგარიშის დადასტურება</p>
         </div>
         
         <!-- Content -->
         <div style="padding: 40px 30px;">
-            <h2 style="color: #212529; margin-bottom: 20px; font-size: 20px;">ანგარიშის დადასტურება</h2>
+            <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 24px; font-weight: 600;">მოგესალმებით!</h2>
             
-            <p style="color: #6c757d; line-height: 1.6; margin-bottom: 25px;">
-                გამარჯობა! თქვენი ანგარიშის დასაცავად გთხოვთ დააკლიკოთ ქვემო ღილაკზე.
+            <p style="color: #34495e; line-height: 1.8; margin-bottom: 25px; font-size: 16px;">
+                თქვენი ანგარიშის უსაფრთხოებისთვის აუცილებელია ელფოსტის ვერიფიკაცია. 
+                გთხოვთ დააკლიკოთ ქვემო ღილაკზე.
             </p>
             
-            <div style="text-align: center; margin: 35px 0;">
+            <div style="text-align: center; margin: 40px 0;">
                 <a href="${verificationUrl}" 
-                   style="background-color: #28a745; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 6px; display: inline-block; font-weight: 500; border: none;">
-                   ანგარიშის დადასტურება
+                   style="background-color: #27ae60; color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3); transition: all 0.3s ease;">
+                   ✓ ვერიფიკაცია
                 </a>
             </div>
             
-            <p style="color: #6c757d; font-size: 14px; line-height: 1.5; margin-top: 30px;">
-                ან დააკოპირეთ ეს ლინკი ბრაუზერში:
-            </p>
-            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; word-break: break-all; font-family: monospace; font-size: 14px; color: #495057;">
-                ${verificationUrl}
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 30px 0;">
+                <p style="color: #6c757d; font-size: 14px; line-height: 1.6; margin: 0 0 15px 0;">
+                    <strong>ალტერნატივა:</strong> თუ ღილაკი არ მუშაობს, დააკოპირეთ ეს ლინკი:
+                </p>
+                <div style="background-color: #ffffff; padding: 15px; border-radius: 6px; word-break: break-all; font-family: 'Courier New', monospace; font-size: 14px; color: #2c3e50; border: 1px solid #e9ecef;">
+                    ${verificationUrl}
+                </div>
             </div>
             
-            <div style="margin-top: 40px; padding-top: 30px; border-top: 1px solid #e9ecef;">
-                <p style="color: #6c757d; font-size: 13px; margin: 0;">
-                    ეს ლინკი ვალიდურია 24 საათის განმავლობაში.<br>
-                    თუ თქვენ არ მოითხოვეთ ეს ვერიფიკაცია, უგულებელყავით ეს მესიჯი.
+            <div style="margin-top: 40px; padding-top: 25px; border-top: 2px solid #ecf0f1;">
+                <p style="color: #7f8c8d; font-size: 14px; margin: 0; line-height: 1.6;">
+                    <strong>ყურადღება:</strong><br>
+                    • ლინკი ვალიდურია 24 საათის განმავლობაში<br>
+                    • თუ თქვენ არ მოითხოვეთ ეს ვერიფიკაცია, უგულებელყავით ეს მესიჯი<br>
+                    • არ გაუზიაროთ ეს ლინკი სხვებს
                 </p>
             </div>
         </div>
         
         <!-- Footer -->
-        <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
-            <p style="color: #6c757d; font-size: 12px; margin: 0;">
-                © ${new Date().getFullYear()} ${siteName}. ყველა უფლება დაცულია.
+        <div style="background-color: #34495e; color: #ecf0f1; padding: 25px; text-align: center;">
+            <p style="font-size: 14px; margin: 0 0 10px 0;">
+                © ${new Date().getFullYear()} ${siteName} - ყველა უფლება დაცულია
             </p>
-            <p style="color: #6c757d; font-size: 12px; margin: 10px 0 0 0;">
-                კითხვების შემთხვევაში მოგვწერეთ: ${supportEmail}
+            <p style="font-size: 13px; margin: 0; opacity: 0.8;">
+                კითხვების შემთხვევაში: ${supportEmail}
             </p>
         </div>
         
@@ -297,19 +100,21 @@ const sendVerificationEmail = async (to, subject, verificationUrl) => {
 </body>
 </html>`;
 
-  // Plain text version (ძალიან მნიშვნელოვანია!)
+  // Plain text version (ძალიან მნიშვნელოვანია spam-ის თავიდან ასაცილებლად!)
   const textContent = `
 ${siteName} - ანგარიშის დადასტურება
 
-გამარჯობა!
+მოგესალმებით!
 
-თქვენი ანგარიშის დასაცავად გთხოვთ გადადით შემდეგ ლინკზე:
+თქვენი ანგარიშის უსაფრთხოებისთვის აუცილებელია ელფოსტის ვერიფიკაცია.
 
+ვერიფიკაციის ლინკი:
 ${verificationUrl}
 
-ეს ლინკი ვალიდურია 24 საათის განმავლობაში.
-
-თუ თქვენ არ მოითხოვეთ ეს ვერიფიკაცია, უგულებელყავით ეს მესიჯი.
+ყურადღება:
+- ლინკი ვალიდურია 24 საათის განმავლობაში
+- თუ თქვენ არ მოითხოვეთ ეს ვერიფიკაცია, უგულებელყავით ეს მესიჯი
+- არ გაუზიაროთ ეს ლინკი სხვებს
 
 მადლობა,
 ${siteName} გუნდი
@@ -317,33 +122,46 @@ ${siteName} გუნდი
 კითხვების შემთხვევაში: ${supportEmail}
 `;
 
-  // ოპტიმიზებული Mail Options
+  // ოპტიმიზებული Mail Options (სპამ-ფილტრების ასათვლელად)
   const mailOptions = {
-    from: `"${siteName}" <${process.env.EMAIL_USER}>`,
+    from: `"${siteName} Support" <${process.env.EMAIL_USER}>`,
     to: to,
-    subject: `${siteName} - ანგარიშის დადასტურება`, // უკეთესი subject
+    subject: `[${siteName}] ანგარიშის დადასტურება`, // უკეთესი subject format
     text: textContent,
     html: htmlContent,
-    // ამ headers-ების დამატება:
+    // Anti-spam headers
     headers: {
-      'X-Priority': '1',
-      'X-MSMail-Priority': 'High',
-      'Importance': 'high',
+      'X-Priority': '3', // Normal priority (არა High)
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'normal',
       'List-Unsubscribe': `<mailto:${supportEmail}?subject=unsubscribe>`,
-      'X-Entity-Ref-ID': `${siteName}-verification`
-    }
+      'X-Entity-Ref-ID': `${siteName}-verification-${Date.now()}`,
+      'Message-ID': `<${Date.now()}-${Math.random().toString(36).substr(2, 9)}@${siteName.toLowerCase()}>`,
+      'X-Mailer': 'NodeMailer',
+      'MIME-Version': '1.0',
+      'Content-Type': 'multipart/alternative'
+    },
+    // Reply-to address
+    replyTo: supportEmail
   };
 
   try {
-    console.log('ელფოსტის გაგზავნა...');
+    console.log('ელფოსტის გაგზავნა:', to);
+    
+    // Rate limiting - ვერიფიკაციის emails-ს შორის მინი პაუზა
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     const info = await transporter.sendMail(mailOptions);
     
     console.log('✓ ელფოსტა წარმატებით გაიგზავნა:', info.messageId);
+    console.log('Response:', info.response);
     
     return { 
       success: true, 
       messageId: info.messageId,
-      response: info.response
+      response: info.response,
+      accepted: info.accepted,
+      rejected: info.rejected
     };
     
   } catch (error) {
@@ -352,8 +170,13 @@ ${siteName} გუნდი
     // დეტალური error handling
     if (error.code === 'EAUTH') {
       console.error('Authentication failed - შეამოწმეთ App Password');
+      throw new Error('ელფოსტის ავტორიზაცია ვერ მოხერხდა');
     } else if (error.code === 'ECONNECTION') {
       console.error('Connection failed - ინტერნეტ კავშირი');
+      throw new Error('ქსელთან დაკავშირება ვერ მოხერხდა');
+    } else if (error.code === 'EMESSAGE') {
+      console.error('Message rejected - შესაძლოა spam-ად იქნას მიჩნეული');
+      throw new Error('მესიჯი უარყოფილია');
     }
     
     throw error;
@@ -372,7 +195,7 @@ const sendEmail = async (to, subject, message, html = null) => {
     throw new Error('საჭირო პარამეტრები არ არის მითითებული');
   }
 
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(to)) {
     throw new Error('არასწორი ელფოსტის ფორმატი');
   }
@@ -401,32 +224,16 @@ const sendEmail = async (to, subject, message, html = null) => {
   const siteName = process.env.SITE_NAME || 'MarketZone';
 
   const mailOptions = {
-    from: `"${siteName}" <${process.env.EMAIL_USER}>`,
+    from: `"${siteName} Team" <${process.env.EMAIL_USER}>`,
     to: to,
     subject: subject,
     text: message,
-    html: html || `
-<!DOCTYPE html>
-<html lang="ka">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${subject}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f8f9fa;">
-    <div style="max-width: 600px; margin: 0 auto; background-color: white; padding: 30px; border: 1px solid #e9ecef;">
-        <h2 style="color: #212529; margin-bottom: 20px;">${subject}</h2>
-        <div style="color: #6c757d; line-height: 1.6;">${message.replace(/\n/g, '<br>')}</div>
-        <hr style="border: 1px solid #e9ecef; margin: 30px 0;">
-        <p style="font-size: 12px; color: #6c757d; margin: 0;">
-            მადლობა,<br>
-            ${siteName} გუნდი
-        </p>
-    </div>
-</body>
-</html>`,
+    html: html || generateSimpleHTML(subject, message, siteName),
     headers: {
-      'List-Unsubscribe': `<mailto:${process.env.EMAIL_USER}?subject=unsubscribe>`
+      'List-Unsubscribe': `<mailto:${process.env.EMAIL_USER}?subject=unsubscribe>`,
+      'X-Priority': '3',
+      'X-MSMail-Priority': 'Normal',
+      'Importance': 'normal'
     }
   };
 
@@ -450,22 +257,86 @@ const sendEmail = async (to, subject, message, html = null) => {
 };
 
 /**
+ * Simple HTML generator
+ */
+const generateSimpleHTML = (subject, message, siteName) => {
+  return `
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background-color: #f8f9fa; color: #333333;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <div style="background-color: #4a90e2; color: white; padding: 25px; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px; font-weight: 600;">${siteName}</h1>
+        </div>
+        <div style="padding: 30px;">
+            <h2 style="color: #2c3e50; margin-bottom: 20px; font-size: 20px;">${subject}</h2>
+            <div style="color: #34495e; line-height: 1.8; font-size: 16px;">${message.replace(/\n/g, '<br>')}</div>
+        </div>
+        <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-top: 1px solid #e9ecef;">
+            <p style="font-size: 14px; color: #6c757d; margin: 0;">
+                მადლობა,<br>
+                ${siteName} გუნდი
+            </p>
+        </div>
+    </div>
+</body>
+</html>`;
+};
+
+/**
  * Email deliverability test
  */
 const testEmailDeliverability = async () => {
   try {
     const transporter = createTransporter();
-    await transporter.verify();
+    const verified = await transporter.verify();
     console.log('✓ SMTP კავშირი წარმატებულია');
-    return true;
+    transporter.close();
+    return verified;
   } catch (error) {
     console.error('❌ SMTP კავშირის შეცდომა:', error);
     return false;
   }
 };
 
+/**
+ * Spam score checker (შეიძლება გამოიყენოთ testing-ისთვის)
+ */
+const checkSpamScore = async (to, subject, content) => {
+  // ეს არის testing utility, რომელიც ამოწმებს potential spam triggers
+  const spamTriggers = [
+    'urgent', 'act now', 'limited time', 'free money', 'guaranteed',
+    'no risk', 'call now', 'order now', 'click here immediately',
+    'winner', 'congratulations', 'selected', 'exclusive deal'
+  ];
+  
+  const lowerContent = (subject + ' ' + content).toLowerCase();
+  const foundTriggers = spamTriggers.filter(trigger => lowerContent.includes(trigger));
+  
+  if (foundTriggers.length > 0) {
+    console.warn('⚠️ Potential spam triggers found:', foundTriggers);
+    return {
+      score: foundTriggers.length,
+      triggers: foundTriggers,
+      recommendation: 'Consider rephrasing to avoid spam filters'
+    };
+  }
+  
+  return {
+    score: 0,
+    triggers: [],
+    recommendation: 'Content looks good'
+  };
+};
+
 module.exports = { 
   sendEmail, 
   sendVerificationEmail, 
-  testEmailDeliverability 
+  testEmailDeliverability,
+  checkSpamScore
 };

@@ -1,7 +1,32 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const sendEmail = require('../utils/sendEmail');
+const path = require('path');
+const fs = require('fs');
+
+// sendEmail იმპორტის გასწორება
+let sendEmailModule;
+let sendEmail;
+let sendVerificationEmail;
+
+try {
+  // იმპორტი მთელი მოდულისა
+  sendEmailModule = require('../utils/sendEmail');
+  console.log('sendEmailModule imported successfully:', Object.keys(sendEmailModule));
+  
+  // ივლებთ სპეციფიკურ ფუნქციებს
+  sendEmail = sendEmailModule.sendEmail;
+  sendVerificationEmail = sendEmailModule.sendVerificationEmail;
+  
+  console.log('sendEmail function type:', typeof sendEmail);
+  console.log('sendVerificationEmail function type:', typeof sendVerificationEmail);
+  
+} catch (error) {
+  console.error('Failed to import sendEmail module:', error.message);
+  sendEmailModule = null;
+  sendEmail = null;
+  sendVerificationEmail = null;
+}
 
 /**
  * Register a new user
@@ -113,33 +138,64 @@ const register = async (req, res) => {
 
     console.log("Step 9: Email token created");
 
-    // Email verification enabled
-    try {
-      // Verification URL
-      const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
+    // Debug: Check environment variables
+    console.log("Environment variables check:");
+    console.log("EMAIL_USER:", process.env.EMAIL_USER ? "SET" : "NOT SET");
+    console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
+    console.log("BASE_URL:", process.env.BASE_URL ? "SET" : "NOT SET");
 
-      // Send verification email - შეცვლილია სპამის თავიდან ასაცილებლად
-      await sendEmail(
-        email,
-        "ანგარიშის გააქტიურება", // ძველი: "ელფოსტის ვერიფიკაცია"
-        verificationUrl
-      );
+    // Email verification - გასწორებული შემოწმება
+    console.log("Checking sendEmail availability:");
+    console.log("sendEmailModule exists:", !!sendEmailModule);
+    console.log("sendVerificationEmail exists:", !!sendVerificationEmail);
+    console.log("sendVerificationEmail type:", typeof sendVerificationEmail);
+    
+    if (sendVerificationEmail && typeof sendVerificationEmail === 'function') {
+      try {
+        console.log("Attempting to send verification email...");
+        
+        // Verification URL
+        const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
+        console.log("Verification URL:", verificationUrl);
 
-      console.log("Step 10: Verification email sent successfully");
+        // Send verification email using the specific function
+        const result = await sendVerificationEmail(
+          email,
+          "ანგარიშის გააქტიურება",
+          verificationUrl
+        );
 
-      res.status(201).json({ 
-        message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ შეამოწმოთ თქვენი ელფოსტა გააქტიურების ბმულისთვის.",
-        userId: user._id
-      });
+        console.log("Step 10: Verification email sent successfully");
+        console.log("Email result:", result);
 
-    } catch (emailError) {
-      console.error("Error sending verification email:", emailError);
+        res.status(201).json({ 
+          message: "მომხმარებელი წარმატებით დარეგისტრირდა. გთხოვთ შეამოწმოთ თქვენი ელფოსტა გააქტიურების ბმულისთვის.",
+          userId: user._id,
+          emailSent: true
+        });
+
+      } catch (emailError) {
+        console.error("Error sending verification email:", emailError);
+        console.error("Email error stack:", emailError.stack);
+        
+        // If email fails, still return success but with different message
+        res.status(201).json({ 
+          message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ გააქტიურების ელფოსტა ვერ გაიგზავნა. შეცდომა: " + emailError.message,
+          userId: user._id,
+          emailError: true,
+          emailErrorMessage: emailError.message
+        });
+      }
+    } else {
+      console.error("sendVerificationEmail function is not available");
+      console.error("Available functions:", sendEmailModule ? Object.keys(sendEmailModule) : 'Module not loaded');
       
-      // If email fails, still return success but with different message
+      // Return success without email verification
       res.status(201).json({ 
-        message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ გააქტიურების ელფოსტა ვერ გაიგზავნა. გთხოვთ სცადოთ ხელახლა ან დაუკავშირდით მხარდაჭერას.",
+        message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ ელფოსტის სერვისი ამჟამად მიუწვდომელია.",
         userId: user._id,
-        emailError: true
+        emailError: true,
+        emailErrorMessage: "Email service not available"
       });
     }
     
@@ -201,6 +257,11 @@ const resendVerification = async (req, res) => {
       return res.status(400).json({ message: "ელ-ფოსტა უკვე ვერიფიცირებულია" });
     }
 
+    // შემოწმება თუ sendVerificationEmail ფუნქცია ხელმისაწვდომია
+    if (!sendVerificationEmail || typeof sendVerificationEmail !== 'function') {
+      return res.status(500).json({ message: "ელფოსტის სერვისი ამჟამად მიუწვდომელია" });
+    }
+
     // Create new verification token
     const emailToken = jwt.sign(
       { id: user._id },
@@ -211,10 +272,10 @@ const resendVerification = async (req, res) => {
     // Verification URL
     const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
 
-    // Send verification email - შეცვლილია სპამის თავიდან ასაცილებლად
-    await sendEmail(
+    // Send verification email
+    await sendVerificationEmail(
       email,
-      "ანგარიშის გააქტიურება", // ძველი: "ელფოსტის ვერიფიკაცია"
+      "ანგარიშის გააქტიურება",
       verificationUrl
     );
 
@@ -379,7 +440,6 @@ const login = async (req, res) => {
   }
 };
 
-// PROPER EXPORTS
 module.exports = {
   register,
   verifyEmail,
