@@ -11,35 +11,7 @@ const app = express();
 // Optional: გააქტიურე strictQuery
 mongoose.set('strictQuery', true);
 
-// Health check endpoint - ყველაზე ზედა უნდა იყოს
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'alive', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    memory: process.memoryUsage(),
-    service: 'MarketZone API'
-  });
-});
-
-// Root endpoint - API info
-app.get('/', (req, res) => {
-  res.json({
-    message: 'MarketZone API Server',
-    version: '1.0.0',
-    status: 'running',
-    endpoints: {
-      health: '/health',
-      auth: '/api/auth',
-      admin: '/api/admin', 
-      users: '/api/users',
-      products: '/api/products',
-      contact: '/api/contact'
-    }
-  });
-});
-
-// CORS კონფიგურაცია
+// ✅ CORS კონფიგურაცია - პირველ რიგში!
 app.use(cors({
   origin: [
     'https://market-zone.netlify.app',
@@ -47,7 +19,7 @@ app.use(cors({
     'http://localhost:4200', // Development-ისთვის
     process.env.CLIENT_URL
   ].filter(Boolean),
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 }));
@@ -64,6 +36,46 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
+// Health check endpoint - როგორც /health და /api/health
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'alive',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    service: 'MarketZone API'
+  });
+});
+
+// დავამატოთ /api/health endpoint კლიენტისთვის
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'alive',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    service: 'MarketZone API'
+  });
+});
+
+// Root endpoint - API info
+app.get('/', (req, res) => {
+  res.json({
+    message: 'MarketZone API Server',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      health: '/health',
+      api_health: '/api/health',
+      auth: '/api/auth',
+      admin: '/api/admin',
+      users: '/api/users',
+      products: '/api/products',
+      contact: '/api/contact'
+    }
+  });
+});
+
 // API Routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/admin", require("./routes/admin"));
@@ -74,17 +86,17 @@ app.use("/api/contact", require("./routes/contactRoutes"));
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(500).json({ 
-    error: 'Something went wrong!', 
+  res.status(500).json({
+    error: 'Something went wrong!',
     ...(process.env.NODE_ENV !== 'production' && { details: err.message })
   });
 });
 
 // Handle 404 for API routes
 app.use('/api/*', (req, res) => {
-  res.status(404).json({ 
+  res.status(404).json({
     error: 'API endpoint not found',
-    path: req.path 
+    path: req.path
   });
 });
 
@@ -115,13 +127,14 @@ process.on('SIGTERM', () => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     console.log("✅ MongoDB connected");
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 10000; // ✅ 10000 პორტი
     const server = app.listen(PORT, () => {
       console.log(`🚀 API Server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
+      console.log(`📊 API Health check: http://localhost:${PORT}/api/health`);
       console.log(`🌐 Frontend: https://www.imarketzone.ge`);
     });
-
+    
     // Keep server reference for graceful shutdown
     global.server = server;
   })

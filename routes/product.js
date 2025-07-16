@@ -1,23 +1,35 @@
-//routes/product.js
+// routes/product.js - გამოსწორებული ვერსია
+
 const express = require('express');
 const router = express.Router();
-const { addProduct, getUserProducts, deleteProduct, getAllProducts, getProductById } = require('../controllers/productController');
+const { uploadProductImages, handleUploadError } = require('../utils/productUpload');
 const { verifyToken } = require('../middleware/auth');
-const productParser = require('../utils/productUpload');
+const {
+  addProduct,
+  getUserProducts,
+  deleteProduct,
+  getAllProducts,
+  getProductById
+} = require('../controllers/productController');
 
-// პროდუქტის დამატება (ავტორიზებული მომხმარებლისთვის)
-router.post("/", verifyToken, productParser.single('productImage'), addProduct);
+// საჯარო routes (authentication არ სჭირდება)
+router.get('/', getAllProducts); // ყველა პროდუქტის მიღება
+router.get('/public', getAllProducts); // ალტერნატიული საჯარო endpoint
 
-// მომხმარებლის პროდუქტების მიღება (ავტორიზებული მომხმარებლისთვის)
-router.get("/user", verifyToken, getUserProducts);
+// დაცული routes (authentication სჭირდება)
+// მომხმარებლის პროდუქტების მიღება - უნდა იყოს /user route-ამდე
+router.get('/user', verifyToken, getUserProducts);
 
-// პროდუქტის წაშლა (ავტორიზებული მომხმარებლისთვის)
-router.delete("/:id", verifyToken, deleteProduct);
+// პროდუქტის დამატება 3 სურათით
+router.post('/', verifyToken, uploadProductImages, addProduct);
 
-// ყველა პროდუქტის მიღება (საჯაროდ ხელმისაწვდომი)
-router.get("/", getAllProducts);
+// პროდუქტის წაშლა
+router.delete('/:id', verifyToken, deleteProduct);
 
-// ერთი პროდუქტის მიღება ID-ით (საჯაროდ ხელმისაწვდომი)
-router.get("/:id", getProductById);
+// კონკრეტული პროდუქტის მიღება ID-ით - უნდა იყოს ბოლოში
+router.get('/:id', getProductById);
+
+// Error handling middleware
+router.use(handleUploadError);
 
 module.exports = router;
