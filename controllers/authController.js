@@ -8,24 +8,28 @@ const fs = require('fs');
 let sendEmailModule;
 let sendEmail;
 let sendVerificationEmail;
+let sendPasswordResetEmail;
 
 try {
   // იმპორტი მთელი მოდულისა
-  sendEmailModule = require('../utils/sendEmail');
+  sendEmailModule = require('../utils/sendEmail2');
   console.log('sendEmailModule imported successfully:', Object.keys(sendEmailModule));
   
   // ივლებთ სპეციფიკურ ფუნქციებს
   sendEmail = sendEmailModule.sendEmail;
   sendVerificationEmail = sendEmailModule.sendVerificationEmail;
+  sendPasswordResetEmail = sendEmailModule.sendPasswordResetEmail;
   
   console.log('sendEmail function type:', typeof sendEmail);
   console.log('sendVerificationEmail function type:', typeof sendVerificationEmail);
+  console.log('sendPasswordResetEmail function type:', typeof sendPasswordResetEmail);
   
 } catch (error) {
   console.error('Failed to import sendEmail module:', error.message);
   sendEmailModule = null;
   sendEmail = null;
   sendVerificationEmail = null;
+  sendPasswordResetEmail = null;
 }
 
 /**
@@ -440,9 +444,245 @@ const login = async (req, res) => {
   }
 };
 
+/**
+ * Forgot Password - Send password reset email
+ * @route POST /api/auth/forgot-password
+ */
+const forgotPassword = async (req, res) => {
+  console.log("=== FORGOT PASSWORD START ===");
+  console.log("Request body:", req.body);
+  
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "ელ-ფოსტა სავალდებულოა" });
+    }
+
+    console.log("Step 1: Looking for user with email:", email);
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    
+    if (!user) {
+      console.log("User not found with email:", email);
+      // არ ვუთხროთ მომხმარებელს რომ ეს ელ-ფოსტა არ არსებობს (უსაფრთხოების მიზნით)
+      return res.status(200).json({ 
+        message: "თუ ეს ელ-ფოსტა რეგისტრირებულია სისტემაში, პაროლის აღდგენის ბმული გაიგზავნება" 
+      });
+    }
+
+    console.log("Step 2: User found, ID:", user._id);
+
+    // შემოწმება თუ sendPasswordResetEmail ფუნქცია ხელმისაწვდომია
+    if (!sendPasswordResetEmail || typeof sendPasswordResetEmail !== 'function') {
+      console.error("sendPasswordResetEmail function is not available");
+      return res.status(500).json({ message: "ელფოსტის სერვისი ამჟამად მიუწვდომელია" });
+    }
+
+    console.log("Step 3: Creating password reset token");
+
+    // Create password reset token (ვადა 1 საათი)
+    const resetToken = jwt.sign(
+      { 
+        id: user._id,
+        email: user.email,
+        type: 'password_reset'
+      },
+      process.env.JWT_SECRET, // ვიყენებთ JWT_SECRET-ს EMAIL_SECRET-ის ნაცვლად
+      { expiresIn: '1h' }
+    );
+
+    console.log("Step 4: Password reset token created");
+
+    // Reset URL
+    const resetUrl = `${process.env.CLIENT_URL}/auth/reset-password/${resetToken}`;
+    console.log("Reset URL:", resetUrl);
+
+    try {
+      console.log("Step 5: Sending password reset email");
+
+      // Send password reset email
+      const result = await sendPasswordResetEmail(
+        email,
+        "პაროლის აღდგენა",
+        resetUrl,
+        user.name
+      );
+
+      console.log("Step 6: Password reset email sent successfully");
+      console.log("Email result:", result);
+
+      res.status(200).json({ 
+        message: "პაროლის აღდგენის ბმული გაიგზავნა თქვენს ელ-ფოსტაზე. გთხოვთ შეამოწმოთ inbox და spam ფოლდერები.",
+        emailSent: true
+      });
+
+    } catch (emailError) {
+      console.error("Error sending password reset email:", emailError);
+      console.error("Email error stack:", emailError.stack);
+      
+      res.status(500).json({ 
+        message: "პაროლის აღდგენის ელფოსტა ვერ გაიგზავნა. გთხოვთ სცადოთ მოგვიანებით.",
+        emailError: true,
+        emailErrorMessage: emailError.message
+      });
+    }
+
+  } catch (err) {
+    console.error("=== FORGOT PASSWORD ERROR ===");
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+    
+    res.status(500).json({ message: "სერვერის შეცდომა", error: err.message });
+  }
+};
+
+/**
+ * Reset Password - Reset password with token
+ * @route POST /api/auth/reset-password/:token
+ */
+const resetPassword = async (req, res) => {
+  console.log("=== RESET PASSWORD START ===");
+  console.log("Request params:", req.params);
+  console.log("Request body:", req.body);
+  
+  try {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+
+    console.log("Step 1: Validating input");
+
+    if (!password || !confirmPassword) {
+      return res.status(400).json({ message: "პაროლი და პაროლის დადასტურება სავალდებულოა" });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: "პაროლები არ ემთხვევა" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: "პაროლი უნდა შედგებოდეს მინიმუმ 6 სიმბოლოსგან" });
+    }
+
+    console.log("Step 2: Verifying reset token");
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Token decoded successfully:", decoded);
+    } catch (tokenError) {
+      console.error("Token verification error:", tokenError);
+      return res.status(400).json({ 
+        message: "პაროლის აღდგენის ბმული არასწორია ან ვადაგასულია",
+        tokenExpired: true
+      });
+    }
+
+    // შემოწმება რომ token არის password reset ტიპის
+    if (decoded.type !== 'password_reset') {
+      console.log("Invalid token type:", decoded.type);
+      return res.status(400).json({ message: "არასწორი ტოკენის ტიპი" });
+    }
+
+    console.log("Step 3: Finding user");
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      console.log("User not found with ID:", decoded.id);
+      return res.status(400).json({ message: "მომხმარებელი ვერ მოიძებნა" });
+    }
+
+    console.log("Step 4: User found, updating password");
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Update user's password
+    user.password = hashedPassword;
+    await user.save();
+
+    console.log("Step 5: Password updated successfully");
+
+    res.status(200).json({ 
+      message: "პაროლი წარმატებით განახლდა. ახლა შეგიძლიათ ახალი პაროლით შესვლა.",
+      success: true
+    });
+
+  } catch (err) {
+    console.error("=== RESET PASSWORD ERROR ===");
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+    
+    res.status(500).json({ message: "სერვერის შეცდომა", error: err.message });
+  }
+};
+
+/**
+ * Verify Reset Token - Check if reset token is valid
+ * @route GET /api/auth/verify-reset-token/:token
+ */
+const verifyResetToken = async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    console.log("Verifying reset token:", token);
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Token decoded successfully:", decoded);
+    } catch (tokenError) {
+      console.error("Token verification error:", tokenError);
+      return res.status(400).json({ 
+        message: "პაროლის აღდგენის ბმული არასწორია ან ვადაგასულია",
+        valid: false,
+        tokenExpired: true
+      });
+    }
+
+    // შემოწმება რომ token არის password reset ტიპის
+    if (decoded.type !== 'password_reset') {
+      console.log("Invalid token type:", decoded.type);
+      return res.status(400).json({ 
+        message: "არასწორი ტოკენის ტიპი",
+        valid: false
+      });
+    }
+
+    // შემოწმება რომ მომხმარებელი არსებობს
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      console.log("User not found with ID:", decoded.id);
+      return res.status(400).json({ 
+        message: "მომხმარებელი ვერ მოიძებნა",
+        valid: false
+      });
+    }
+
+    res.status(200).json({ 
+      message: "ტოკენი ვალიდურია",
+      valid: true,
+      email: decoded.email
+    });
+
+  } catch (err) {
+    console.error("Error verifying reset token:", err);
+    res.status(500).json({ 
+      message: "სერვერის შეცდომა",
+      valid: false,
+      error: err.message 
+    });
+  }
+};
+
 module.exports = {
   register,
   verifyEmail,
   login,
-  resendVerification
+  resendVerification,
+  forgotPassword,
+  resetPassword,
+  verifyResetToken
 };
