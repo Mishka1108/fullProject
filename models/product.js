@@ -1,5 +1,16 @@
-// models/product.js - განახლებული ვერსია 3 სურათისთვის
+// models/product.js - მთლიანი კოდი slug-ით
 const mongoose = require("mongoose");
+
+// Slug generator function
+function generateSlug(title) {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\u10A0-\u10FF\w\s-]/g, '') // ქართული ასოები + ლათინური + რიცხვები
+    .replace(/\s+/g, '-') // spaces -> hyphens
+    .replace(/-+/g, '-') // multiple hyphens -> single hyphen
+    .replace(/^-|-$/g, ''); // remove leading/trailing hyphens
+}
 
 const productSchema = new mongoose.Schema({
   userId: {
@@ -10,6 +21,12 @@ const productSchema = new mongoose.Schema({
   title: {
     type: String,
     required: true,
+    trim: true
+  },
+  // ✅ SLUG ველის დამატება
+  slug: {
+    type: String,
+    unique: true,
     trim: true
   },
   cities: {
@@ -66,6 +83,45 @@ const productSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
+// ✅ Pre-save middleware - slug-ის ავტომატური გენერაცია
+productSchema.pre('save', async function(next) {
+  try {
+    // Slug generation
+    if (this.isModified('title') || !this.slug) {
+      let baseSlug = generateSlug(this.title);
+      let uniqueSlug = baseSlug;
+      let counter = 1;
+      
+      // Check for unique slug
+      while (await mongoose.model('Product').findOne({ 
+        slug: uniqueSlug, 
+        _id: { $ne: this._id } 
+      })) {
+        uniqueSlug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+      
+      this.slug = uniqueSlug;
+    }
+    
+    // Image validation
+    if ((!this.images || this.images.length === 0) && !this.image) {
+      const error = new Error('მინიმუმ ერთი სურათი აუცილებელია');
+      error.name = 'ValidationError';
+      return next(error);
+    }
+    
+    // თუ images array არ არის, მაგრამ image ველი არის, გადავიტანოთ images array-ში
+    if (this.image && (!this.images || this.images.length === 0)) {
+      this.images = [this.image];
+    }
+    
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Virtual field - თუ images array ცარიელია, დაბრუნდეს image ველი
 productSchema.virtual('primaryImage').get(function() {
   if (this.images && this.images.length > 0) {
@@ -87,24 +143,13 @@ productSchema.index({ userId: 1, createdAt: -1 });
 productSchema.index({ category: 1 });
 productSchema.index({ cities: 1 });
 productSchema.index({ price: 1 });
+productSchema.index({ slug: 1 }); // ✅ Slug index
 productSchema.index({ title: 'text', description: 'text' });
 
-// Pre-save middleware - ვალიდაციისთვის
-productSchema.pre('save', function(next) {
-  // მინიმუმ ერთი სურათი უნდა იყოს
-  if ((!this.images || this.images.length === 0) && !this.image) {
-    const error = new Error('მინიმუმ ერთი სურათი აუცილებელია');
-    error.name = 'ValidationError';
-    return next(error);
-  }
-  
-  // თუ images array არ არის, მაგრამ image ველი არის, გადავიტანოთ images array-ში
-  if (this.image && (!this.images || this.images.length === 0)) {
-    this.images = [this.image];
-  }
-  
-  next();
-});
+// ✅ Static method - slug-ით პროდუქტის ძებნა
+productSchema.statics.findBySlug = function(slug) {
+  return this.findOne({ slug: slug });
+};
 
 // Static method - user-ის პროდუქტების მიღება
 productSchema.statics.findByUserId = function(userId) {
