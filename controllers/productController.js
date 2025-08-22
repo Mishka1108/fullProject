@@ -1,22 +1,27 @@
-// controllers/productController.js - მთლიანი კოდი
+// controllers/productController.js - მთლიანი კოდი ნახვების ფუნქციით
 const Product = require('../models/product');
+const mongoose = require('mongoose'); // ✅ დაამატე
 
-// ✅ SLUG-ით პროდუქტის მიღება
+// ✅ SLUG-ით პროდუქტის მიღება + ნახვების increment
 const getProductBySlug = async (req, res) => {
   try {
     const originalSlug = req.params.slug;
     const slug = decodeURIComponent(originalSlug);
     
+    // ✅ Client IP და User Agent მიღება
+    const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+    const userAgent = req.get('User-Agent');
+    
     console.log('🔍 Original slug from URL:', originalSlug);
     console.log('🔍 Decoded slug:', slug);
-    console.log('🔍 Slug encoding test:', encodeURIComponent(slug));
+    console.log('👁️ Client IP:', clientIP);
     
     const product = await Product.findBySlug(slug).populate('userId', 'name secondName profileImage');
     
     if (!product) {
       console.log('❌ Product not found with slug:', slug);
       
-      // ✅ დამატებითი ძებნა title-ით (fallback)
+      // დამატებითი ძებნა title-ით (fallback)
       console.log('🔄 Trying to find by title...');
       const productByTitle = await Product.findOne({ 
         title: { $regex: new RegExp(`^${slug.replace(/[-_]/g, '\\s*')}$`, 'i') }
@@ -24,6 +29,11 @@ const getProductBySlug = async (req, res) => {
       
       if (productByTitle) {
         console.log('✅ Found product by title:', productByTitle.title);
+        
+        // ✅ ნახვების increment
+        await productByTitle.incrementViews(clientIP, userAgent);
+        console.log('👁️ Views incremented:', productByTitle.views);
+        
         return res.status(200).json({
           success: true,
           data: productByTitle
@@ -38,7 +48,11 @@ const getProductBySlug = async (req, res) => {
       });
     }
 
+    // ✅ ნახვების increment
+    await product.incrementViews(clientIP, userAgent);
     console.log('✅ Found product:', product.title);
+    console.log('👁️ Views incremented to:', product.views);
+
     res.status(200).json({
       success: true,
       data: product
@@ -52,9 +66,13 @@ const getProductBySlug = async (req, res) => {
     });
   }
 };
-// ID-ით პროდუქტის მიღება
+
+// ✅ ID-ით პროდუქტის მიღება + ნახვების increment
 const getProductById = async (req, res) => {
   try {
+    const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+    const userAgent = req.get('User-Agent');
+    
     const product = await Product.findById(req.params.id).populate('userId', 'name secondName profileImage');
     
     if (!product) {
@@ -64,6 +82,10 @@ const getProductById = async (req, res) => {
       });
     }
 
+    // ✅ ნახვების increment
+    await product.incrementViews(clientIP, userAgent);
+    console.log('👁️ Product viewed:', product.title, 'Views:', product.views);
+
     res.status(200).json({
       success: true,
       data: product
@@ -71,7 +93,6 @@ const getProductById = async (req, res) => {
   } catch (error) {
     console.error('Error fetching product by ID:', error);
     
-    // Handle invalid ObjectId error
     if (error.name === 'CastError') {
       return res.status(404).json({
         success: false,
@@ -87,7 +108,131 @@ const getProductById = async (req, res) => {
   }
 };
 
-// ყველა პროდუქტის მიღება (ფილტრებით და პაგინაციით)
+// ✅ ახალი - ნახვების მანუალური increment
+const incrementProductViews = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
+    const userAgent = req.get('User-Agent');
+    
+    const product = await Product.findById(id);
+    
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'პროდუქტი ვერ მოიძებნა'
+      });
+    }
+
+    const newViewCount = await product.incrementViews(clientIP, userAgent);
+    
+    res.status(200).json({
+      success: true,
+      message: 'ნახვა დაემატა',
+      data: {
+        productId: product._id,
+        title: product.title,
+        views: newViewCount
+      }
+    });
+  } catch (error) {
+    console.error('Error incrementing views:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(404).json({
+        success: false,
+        message: 'პროდუქტი ვერ მოიძებნა'
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'სერვერის შეცდომა',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+};
+
+// ✅ ახალი - კონკრეტული პროდუქტის ნახვების მიღება
+const getProductViews = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // MongoDB ObjectId ვალიდაცია
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'არასწორი პროდუქტის ID'
+      });
+    }
+
+    const product = await Product.findById(id).select('views viewCount viewHistory title');
+    
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'პროდუქტი ვერ მოიძებნა'
+      });
+    }
+
+    // ნახვების სტრუქტურა
+    const viewsData = {
+      productId: id,
+      productTitle: product.title,
+      totalViews: product.views || 0, // ძველი ფორმატი
+      viewCount: product.viewCount || 0, // ახალი ფორმატი
+      viewHistory: product.viewHistory || [],
+      todayViews: 0,
+      weekViews: 0,
+      monthViews: 0
+    };
+
+    // თუ viewHistory არსებობს, გამოვთვალოთ სტატისტიკა
+    if (product.viewHistory && product.viewHistory.length > 0) {
+      const now = new Date();
+      
+      // დღევანდელი ნახვები
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      viewsData.todayViews = product.viewHistory.filter(view => 
+        new Date(view.viewedAt) >= today
+      ).length;
+
+      // კვირის ნახვები
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      
+      viewsData.weekViews = product.viewHistory.filter(view => 
+        new Date(view.viewedAt) >= weekAgo
+      ).length;
+
+      // თვის ნახვები
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      
+      viewsData.monthViews = product.viewHistory.filter(view => 
+        new Date(view.viewedAt) >= monthAgo
+      ).length;
+    }
+
+    res.json({
+      success: true,
+      data: viewsData,
+      message: 'ნახვების სტატისტიკა წარმატებით მოიძებნა'
+    });
+
+  } catch (error) {
+    console.error('Error fetching product views:', error);
+    res.status(500).json({
+      success: false,
+      message: 'ნახვების მონაცემების მიღების შეცდომა',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+};
+
+// ✅ ყველა პროდუქტის მიღება - ნახვების მიხედვითაც sorting
 const getAllProducts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -97,29 +242,24 @@ const getAllProducts = async (req, res) => {
     // Filter options
     const filter = {};
     
-    // Category filter
     if (req.query.category && req.query.category !== 'all') {
       filter.category = req.query.category;
     }
     
-    // City filter
     if (req.query.city && req.query.city !== 'all') {
       filter.cities = { $regex: new RegExp(req.query.city, 'i') };
     }
     
-    // Price range filter
     if (req.query.minPrice || req.query.maxPrice) {
       filter.price = {};
       if (req.query.minPrice) filter.price.$gte = parseInt(req.query.minPrice);
       if (req.query.maxPrice) filter.price.$lte = parseInt(req.query.maxPrice);
     }
     
-    // Year filter
     if (req.query.year) {
       filter.year = parseInt(req.query.year);
     }
     
-    // Search by title or description
     if (req.query.search) {
       filter.$or = [
         { title: { $regex: new RegExp(req.query.search, 'i') } },
@@ -127,8 +267,8 @@ const getAllProducts = async (req, res) => {
       ];
     }
 
-    // Sort options
-    let sortOption = { createdAt: -1 }; // Default: newest first
+    // ✅ Sort options - ნახვების მიხედვითაც
+    let sortOption = { createdAt: -1 };
     
     if (req.query.sortBy) {
       switch (req.query.sortBy) {
@@ -149,6 +289,15 @@ const getAllProducts = async (req, res) => {
           break;
         case 'year_asc':
           sortOption = { year: 1 };
+          break;
+        case 'views_desc': // ✅ ყველაზე ნანახი
+          sortOption = { views: -1 };
+          break;
+        case 'views_asc': // ✅ ყველაზე ნაკლები ნანახი
+          sortOption = { views: 1 };
+          break;
+        case 'popular': // ✅ პოპულარული (ნახვები + ახალი)
+          sortOption = { views: -1, createdAt: -1 };
           break;
         default:
           sortOption = { createdAt: -1 };
@@ -194,6 +343,95 @@ const getAllProducts = async (req, res) => {
   }
 };
 
+// ✅ ახალი - პოპულარული პროდუქტების მიღება
+const getPopularProducts = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const category = req.query.category;
+    
+    let filter = {};
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+    
+    const popularProducts = await Product.find(filter)
+      .populate('userId', 'name secondName profileImage')
+      .sort({ views: -1, createdAt: -1 })
+      .limit(limit);
+
+    res.status(200).json({
+      success: true,
+      data: popularProducts,
+      message: `ტოპ ${popularProducts.length} პოპულარული პროდუქტი`
+    });
+  } catch (error) {
+    console.error('Error fetching popular products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'სერვერის შეცდომა',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+};
+
+// ✅ ახალი - ნახვების სტატისტიკა
+const getViewsStatistics = async (req, res) => {
+  try {
+    const stats = await Product.getViewsStats();
+    
+    // კატეგორიების მიხედვით ნახვები
+    const categoryStats = await Product.aggregate([
+      {
+        $group: {
+          _id: '$category',
+          totalViews: { $sum: '$views' },
+          avgViews: { $avg: '$views' },
+          productCount: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { totalViews: -1 }
+      }
+    ]);
+
+    // ბოლო 7 დღის ნახვები (თუ viewHistory აქვს)
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    
+    const recentViews = await Product.aggregate([
+      { $unwind: '$viewHistory' },
+      { $match: { 'viewHistory.viewedAt': { $gte: weekAgo } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$viewHistory.viewedAt' },
+            month: { $month: '$viewHistory.viewedAt' },
+            day: { $dayOfMonth: '$viewHistory.viewedAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        overall: stats,
+        byCategory: categoryStats,
+        recentViews: recentViews
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching views statistics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'სერვერის შეცდომა',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
+  }
+};
+
 // მომხმარებლის პროდუქტების მიღება
 const getUserProducts = async (req, res) => {
   try {
@@ -216,7 +454,6 @@ const getUserProducts = async (req, res) => {
 };
 
 // პროდუქტის დამატება
-// controllers/productController.js - განახლებული addProduct ფუნქცია
 const addProduct = async (req, res) => {
   try {
     const images = [];
@@ -226,18 +463,15 @@ const addProduct = async (req, res) => {
     console.log('Files by field:', req.filesByField);
     console.log('Body:', req.body);
     
-    // ✅ Handle uploaded files - უნივერსალური მიდგომა
     if (req.files && req.files.length > 0) {
       console.log(`📸 Processing ${req.files.length} files...`);
       
-      // ვარიანტი 1: თუ Cloudinary storage გამოიყენება
       if (req.files[0].path) {
         req.files.forEach((file, index) => {
           console.log(`📎 File ${index + 1}: ${file.originalname} -> ${file.path}`);
-          images.push(file.path); // Cloudinary URL
+          images.push(file.path);
         });
       }
-      // ვარიანტი 2: თუ Buffer storage გამოიყენება  
       else if (req.files[0].buffer) {
         req.files.forEach((file, index) => {
           console.log(`📎 File ${index + 1}: ${file.originalname} -> converting to base64`);
@@ -247,7 +481,6 @@ const addProduct = async (req, res) => {
       }
     }
 
-    // Validate required fields
     const { title, cities, category, email, year, phone, price, description } = req.body;
     
     if (!title || !cities || !category || !email || !year || !phone || !price || !description) {
@@ -268,7 +501,6 @@ const addProduct = async (req, res) => {
       });
     }
 
-    // ✅ Create product data
     const productData = {
       userId: req.user.id,
       title: title.trim(),
@@ -279,7 +511,8 @@ const addProduct = async (req, res) => {
       phone: phone.trim(),
       price: parseFloat(price),
       description: description.trim(),
-      images: images.length > 0 ? images : undefined
+      images: images.length > 0 ? images : undefined,
+      views: 0 // ✅ ახალი პროდუქტი 0 ნახვით იწყება
     };
 
     console.log('💾 Creating product with data:', {
@@ -290,7 +523,6 @@ const addProduct = async (req, res) => {
     const product = new Product(productData);
     await product.save();
 
-    // Populate user info for response
     await product.populate('userId', 'name secondName profileImage');
 
     console.log('✅ Product created successfully:', product.title);
@@ -302,13 +534,13 @@ const addProduct = async (req, res) => {
       debug: {
         uploadedImages: images.length,
         productId: product._id,
-        slug: product.slug
+        slug: product.slug,
+        initialViews: product.views
       }
     });
   } catch (error) {
     console.error('❌ Error adding product:', error);
     
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
       return res.status(400).json({
@@ -319,7 +551,6 @@ const addProduct = async (req, res) => {
       });
     }
     
-    // Handle duplicate slug error
     if (error.code === 11000 && error.keyPattern && error.keyPattern.slug) {
       return res.status(400).json({
         success: false,
@@ -349,7 +580,6 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Check if user owns the product
     if (product.userId.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
@@ -357,7 +587,6 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Handle new images if uploaded
     if (req.files && req.files.length > 0) {
       const newImages = [];
       req.files.forEach(file => {
@@ -367,7 +596,7 @@ const updateProduct = async (req, res) => {
       req.body.images = newImages;
     }
 
-    // Update fields
+    // ✅ განახლებისას views არ უნდა შეიცვალოს!
     const allowedFields = ['title', 'cities', 'category', 'email', 'year', 'phone', 'price', 'description', 'images'];
     const updateData = {};
     
@@ -430,7 +659,6 @@ const deleteProduct = async (req, res) => {
       });
     }
 
-    // Check if user owns the product
     if (product.userId.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
@@ -462,7 +690,7 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// კატეგორიების სტატისტიკის მიღება
+// ✅ კატეგორიების სტატისტიკის მიღება - ნახვებითაც
 const getCategoryStats = async (req, res) => {
   try {
     const stats = await Product.aggregate([
@@ -472,11 +700,13 @@ const getCategoryStats = async (req, res) => {
           count: { $sum: 1 },
           avgPrice: { $avg: '$price' },
           minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' }
+          maxPrice: { $max: '$price' },
+          totalViews: { $sum: '$views' }, // ✅ ნახვების ჯამი
+          avgViews: { $avg: '$views' } // ✅ ნახვების საშუალო
         }
       },
       {
-        $sort: { count: -1 }
+        $sort: { totalViews: -1 } // ✅ ყველაზე ნანახი კატეგორიები
       }
     ]);
 
@@ -492,6 +722,8 @@ const getCategoryStats = async (req, res) => {
     });
   }
 };
+
+// ძებნის ფუნქცია
 const searchProducts = async (req, res) => {
   try {
     const { title, slug } = req.query;
@@ -502,7 +734,7 @@ const searchProducts = async (req, res) => {
     }
 
     if (slug) {
-      filter.slug = slug; // ზუსტად ემთხვევა
+      filter.slug = slug;
     }
 
     const results = await Product.find(filter).populate('userId', 'name secondName profileImage');
@@ -530,5 +762,9 @@ module.exports = {
   getProductById,
   getProductBySlug,
   getCategoryStats,
-  searchProducts
+  searchProducts,
+  incrementProductViews, // ✅ ახალი
+  getPopularProducts, // ✅ ახალი
+  getViewsStatistics, // ✅ ახალი
+  getProductViews // ✅ ახალი - კონკრეტული პროდუქტის ნახვები
 };

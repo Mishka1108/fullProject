@@ -1,4 +1,4 @@
-// models/product.js - მთლიანი კოდი slug-ით
+// models/product.js - ნახვების ფუნქციით განახლებული
 const mongoose = require("mongoose");
 
 // Slug generator function
@@ -23,7 +23,6 @@ const productSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  // ✅ SLUG ველის დამატება
   slug: {
     type: String,
     unique: true,
@@ -66,24 +65,47 @@ const productSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  // მრავალი სურათისთვის images array
   images: [{
     type: String,
     required: false
   }],
-  // backward compatibility-სთვის ძველი image ველი
   image: {
     type: String,
     required: false
+  },
+  // ✅ ნახვების ველი
+  views: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  // ✅ ნახვების ისტორია (optional - analytics-ისთვის)
+  viewHistory: [{
+    viewedAt: {
+      type: Date,
+      default: Date.now
+    },
+    ipAddress: {
+      type: String,
+      required: false
+    },
+    userAgent: {
+      type: String,
+      required: false
+    }
+  }],
+  // ✅ ლასტ ნახვის თარიღი
+  lastViewedAt: {
+    type: Date,
+    default: null
   }
 }, { 
   timestamps: true,
-  // virtual fields-ისთვის
   toJSON: { virtuals: true },
   toObject: { virtuals: true }
 });
 
-// ✅ Pre-save middleware - slug-ის ავტომატური გენერაცია
+// Pre-save middleware
 productSchema.pre('save', async function(next) {
   try {
     // Slug generation
@@ -92,7 +114,6 @@ productSchema.pre('save', async function(next) {
       let uniqueSlug = baseSlug;
       let counter = 1;
       
-      // Check for unique slug
       while (await mongoose.model('Product').findOne({ 
         slug: uniqueSlug, 
         _id: { $ne: this._id } 
@@ -111,7 +132,6 @@ productSchema.pre('save', async function(next) {
       return next(error);
     }
     
-    // თუ images array არ არის, მაგრამ image ველი არის, გადავიტანოთ images array-ში
     if (this.image && (!this.images || this.images.length === 0)) {
       this.images = [this.image];
     }
@@ -122,7 +142,7 @@ productSchema.pre('save', async function(next) {
   }
 });
 
-// Virtual field - თუ images array ცარიელია, დაბრუნდეს image ველი
+// Virtual fields
 productSchema.virtual('primaryImage').get(function() {
   if (this.images && this.images.length > 0) {
     return this.images[0];
@@ -130,7 +150,6 @@ productSchema.virtual('primaryImage').get(function() {
   return this.image;
 });
 
-// Virtual field - ყველა სურათის დასაბრუნებლად
 productSchema.virtual('allImages').get(function() {
   if (this.images && this.images.length > 0) {
     return this.images;
@@ -138,35 +157,111 @@ productSchema.virtual('allImages').get(function() {
   return this.image ? [this.image] : [];
 });
 
-// Index-ები პერფორმანსისთვის
+// ✅ Virtual field - ნახვების სტატისტიკისთვის
+productSchema.virtual('isPopular').get(function() {
+  return this.views > 100; // 100+ ნახვა = პოპულარული
+});
+
+productSchema.virtual('viewsDisplay').get(function() {
+  if (this.views >= 1000) {
+    return Math.floor(this.views / 1000) + 'K';
+  }
+  return this.views.toString();
+});
+
+// Index-ები
 productSchema.index({ userId: 1, createdAt: -1 });
 productSchema.index({ category: 1 });
 productSchema.index({ cities: 1 });
 productSchema.index({ price: 1 });
-productSchema.index({ slug: 1 }); // ✅ Slug index
+productSchema.index({ slug: 1 });
+productSchema.index({ views: -1 }); // ✅ ნახვების index პოპულარული პროდუქტებისთვის
 productSchema.index({ title: 'text', description: 'text' });
 
-// ✅ Static method - slug-ით პროდუქტის ძებნა
+// Static methods
 productSchema.statics.findBySlug = function(slug) {
   return this.findOne({ slug: slug });
 };
 
-// Static method - user-ის პროდუქტების მიღება
 productSchema.statics.findByUserId = function(userId) {
   return this.find({ userId }).sort({ createdAt: -1 });
 };
 
-// Static method - კატეგორიით ძებნა
 productSchema.statics.findByCategory = function(category) {
   return this.find({ category }).sort({ createdAt: -1 });
 };
 
-// Static method - ქალაქით ძებნა
 productSchema.statics.findByCity = function(city) {
   return this.find({ cities: { $regex: new RegExp(city, 'i') } }).sort({ createdAt: -1 });
 };
 
-// Instance method - პროდუქტის მფლობელთან დაკავშირება
+// ✅ ნახვების ტოპ პროდუქტები
+productSchema.statics.findMostViewed = function(limit = 10) {
+  return this.find()
+    .populate('userId', 'name secondName profileImage')
+    .sort({ views: -1 })
+    .limit(limit);
+};
+
+// ✅ ნახვების increment მეთოდი
+productSchema.methods.incrementViews = async function(ipAddress = null, userAgent = null) {
+  try {
+    // ძირითადი views counter
+    this.views += 1;
+    this.lastViewedAt = new Date();
+    
+    // ✅ ნახვების ისტორიის დამატება (optional)
+    if (ipAddress || userAgent) {
+      // ლიმიტი ისტორიაზე - ბოლო 100 ნახვა
+      if (this.viewHistory.length >= 100) {
+        this.viewHistory = this.viewHistory.slice(-99); // Keep last 99
+      }
+      
+      this.viewHistory.push({
+        viewedAt: new Date(),
+        ipAddress: ipAddress,
+        userAgent: userAgent
+      });
+    }
+    
+    await this.save();
+    return this.views;
+  } catch (error) {
+    console.error('Error incrementing views:', error);
+    throw error;
+  }
+};
+
+// ✅ ნახვების სტატისტიკა
+productSchema.statics.getViewsStats = async function() {
+  try {
+    const stats = await this.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalViews: { $sum: '$views' },
+          avgViews: { $avg: '$views' },
+          maxViews: { $max: '$views' },
+          minViews: { $min: '$views' },
+          totalProducts: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    return stats[0] || {
+      totalViews: 0,
+      avgViews: 0,
+      maxViews: 0,
+      minViews: 0,
+      totalProducts: 0
+    };
+  } catch (error) {
+    console.error('Error getting views stats:', error);
+    throw error;
+  }
+};
+
+// Instance method
 productSchema.methods.getOwnerInfo = async function() {
   const User = mongoose.model('User');
   const user = await User.findById(this.userId).select('name secondName profileImage');
