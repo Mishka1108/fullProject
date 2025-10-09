@@ -1,6 +1,6 @@
-// controllers/productController.js - მთლიანი კოდი ნახვების ფუნქციით
+// controllers/productController.js - განახლებული ვერსია userAvatar-ით
 const Product = require('../models/product');
-const mongoose = require('mongoose'); // ✅ დაამატე
+const mongoose = require('mongoose');
 
 // ✅ SLUG-ით პროდუქტის მიღება + ნახვების increment
 const getProductBySlug = async (req, res) => {
@@ -8,7 +8,6 @@ const getProductBySlug = async (req, res) => {
     const originalSlug = req.params.slug;
     const slug = decodeURIComponent(originalSlug);
     
-    // ✅ Client IP და User Agent მიღება
     const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
     const userAgent = req.get('User-Agent');
     
@@ -16,21 +15,28 @@ const getProductBySlug = async (req, res) => {
     console.log('🔍 Decoded slug:', slug);
     console.log('👁️ Client IP:', clientIP);
     
-    const product = await Product.findBySlug(slug).populate('userId', 'name secondName profileImage');
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
+    const product = await Product.findBySlug(slug).populate('userId', 'name secondName profileImage avatar');
     
     if (!product) {
       console.log('❌ Product not found with slug:', slug);
       
-      // დამატებითი ძებნა title-ით (fallback)
       console.log('🔄 Trying to find by title...');
       const productByTitle = await Product.findOne({ 
         title: { $regex: new RegExp(`^${slug.replace(/[-_]/g, '\\s*')}$`, 'i') }
-      }).populate('userId', 'name secondName profileImage');
+      }).populate('userId', 'name secondName profileImage avatar');
       
       if (productByTitle) {
         console.log('✅ Found product by title:', productByTitle.title);
         
-        // ✅ ნახვების increment
+        // ✅✅✅ ახალი: userAvatar-ის ავტომატური დამატება ✅✅✅
+        if (!productByTitle.userAvatar && productByTitle.userId?.avatar) {
+          productByTitle.userAvatar = productByTitle.userId.avatar;
+        }
+        if (!productByTitle.userAvatar && productByTitle.userId?.profileImage) {
+          productByTitle.userAvatar = productByTitle.userId.profileImage;
+        }
+        
         await productByTitle.incrementViews(clientIP, userAgent);
         console.log('👁️ Views incremented:', productByTitle.views);
         
@@ -48,7 +54,14 @@ const getProductBySlug = async (req, res) => {
       });
     }
 
-    // ✅ ნახვების increment
+    // ✅✅✅ ახალი: userAvatar-ის ავტომატური დამატება ✅✅✅
+    if (!product.userAvatar && product.userId?.avatar) {
+      product.userAvatar = product.userId.avatar;
+    }
+    if (!product.userAvatar && product.userId?.profileImage) {
+      product.userAvatar = product.userId.profileImage;
+    }
+
     await product.incrementViews(clientIP, userAgent);
     console.log('✅ Found product:', product.title);
     console.log('👁️ Views incremented to:', product.views);
@@ -73,7 +86,8 @@ const getProductById = async (req, res) => {
     const clientIP = req.ip || req.connection.remoteAddress || req.headers['x-forwarded-for'];
     const userAgent = req.get('User-Agent');
     
-    const product = await Product.findById(req.params.id).populate('userId', 'name secondName profileImage');
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
+    const product = await Product.findById(req.params.id).populate('userId', 'name secondName profileImage avatar');
     
     if (!product) {
       return res.status(404).json({
@@ -82,7 +96,14 @@ const getProductById = async (req, res) => {
       });
     }
 
-    // ✅ ნახვების increment
+    // ✅✅✅ ახალი: userAvatar-ის ავტომატური დამატება ✅✅✅
+    if (!product.userAvatar && product.userId?.avatar) {
+      product.userAvatar = product.userId.avatar;
+    }
+    if (!product.userAvatar && product.userId?.profileImage) {
+      product.userAvatar = product.userId.profileImage;
+    }
+
     await product.incrementViews(clientIP, userAgent);
     console.log('👁️ Product viewed:', product.title, 'Views:', product.views);
 
@@ -158,7 +179,6 @@ const getProductViews = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // MongoDB ObjectId ვალიდაცია
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -175,23 +195,20 @@ const getProductViews = async (req, res) => {
       });
     }
 
-    // ნახვების სტრუქტურა
     const viewsData = {
       productId: id,
       productTitle: product.title,
-      totalViews: product.views || 0, // ძველი ფორმატი
-      viewCount: product.viewCount || 0, // ახალი ფორმატი
+      totalViews: product.views || 0,
+      viewCount: product.viewCount || 0,
       viewHistory: product.viewHistory || [],
       todayViews: 0,
       weekViews: 0,
       monthViews: 0
     };
 
-    // თუ viewHistory არსებობს, გამოვთვალოთ სტატისტიკა
     if (product.viewHistory && product.viewHistory.length > 0) {
       const now = new Date();
       
-      // დღევანდელი ნახვები
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       
@@ -199,7 +216,6 @@ const getProductViews = async (req, res) => {
         new Date(view.viewedAt) >= today
       ).length;
 
-      // კვირის ნახვები
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       
@@ -207,7 +223,6 @@ const getProductViews = async (req, res) => {
         new Date(view.viewedAt) >= weekAgo
       ).length;
 
-      // თვის ნახვები
       const monthAgo = new Date();
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       
@@ -239,7 +254,6 @@ const getAllProducts = async (req, res) => {
     const limit = parseInt(req.query.limit) || 12;
     const skip = (page - 1) * limit;
 
-    // Filter options
     const filter = {};
     
     if (req.query.category && req.query.category !== 'all') {
@@ -267,7 +281,6 @@ const getAllProducts = async (req, res) => {
       ];
     }
 
-    // ✅ Sort options - ნახვების მიხედვითაც
     let sortOption = { createdAt: -1 };
     
     if (req.query.sortBy) {
@@ -290,13 +303,13 @@ const getAllProducts = async (req, res) => {
         case 'year_asc':
           sortOption = { year: 1 };
           break;
-        case 'views_desc': // ✅ ყველაზე ნანახი
+        case 'views_desc':
           sortOption = { views: -1 };
           break;
-        case 'views_asc': // ✅ ყველაზე ნაკლები ნანახი
+        case 'views_asc':
           sortOption = { views: 1 };
           break;
-        case 'popular': // ✅ პოპულარული (ნახვები + ახალი)
+        case 'popular':
           sortOption = { views: -1, createdAt: -1 };
           break;
         default:
@@ -304,17 +317,32 @@ const getAllProducts = async (req, res) => {
       }
     }
 
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
     const products = await Product.find(filter)
-      .populate('userId', 'name secondName profileImage')
+      .populate('userId', 'name secondName profileImage avatar')
       .sort(sortOption)
       .skip(skip)
       .limit(limit);
+
+    // ✅✅✅ ახალი: userAvatar-ის ავტომატური დამატება ყველა პროდუქტში ✅✅✅
+    const enhancedProducts = products.map(product => {
+      const productObj = product.toObject();
+      
+      if (!productObj.userAvatar && productObj.userId?.avatar) {
+        productObj.userAvatar = productObj.userId.avatar;
+      }
+      if (!productObj.userAvatar && productObj.userId?.profileImage) {
+        productObj.userAvatar = productObj.userId.profileImage;
+      }
+      
+      return productObj;
+    });
 
     const total = await Product.countDocuments(filter);
 
     res.status(200).json({
       success: true,
-      data: products,
+      data: enhancedProducts,
       pagination: {
         page,
         limit,
@@ -354,8 +382,9 @@ const getPopularProducts = async (req, res) => {
       filter.category = category;
     }
     
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
     const popularProducts = await Product.find(filter)
-      .populate('userId', 'name secondName profileImage')
+      .populate('userId', 'name secondName profileImage avatar')
       .sort({ views: -1, createdAt: -1 })
       .limit(limit);
 
@@ -379,7 +408,6 @@ const getViewsStatistics = async (req, res) => {
   try {
     const stats = await Product.getViewsStats();
     
-    // კატეგორიების მიხედვით ნახვები
     const categoryStats = await Product.aggregate([
       {
         $group: {
@@ -394,7 +422,6 @@ const getViewsStatistics = async (req, res) => {
       }
     ]);
 
-    // ბოლო 7 დღის ნახვები (თუ viewHistory აქვს)
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
     
@@ -435,8 +462,9 @@ const getViewsStatistics = async (req, res) => {
 // მომხმარებლის პროდუქტების მიღება
 const getUserProducts = async (req, res) => {
   try {
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
     const products = await Product.findByUserId(req.user.id)
-      .populate('userId', 'name secondName profileImage');
+      .populate('userId', 'name secondName profileImage avatar');
       
     res.status(200).json({
       success: true,
@@ -512,8 +540,21 @@ const addProduct = async (req, res) => {
       price: parseFloat(price),
       description: description.trim(),
       images: images.length > 0 ? images : undefined,
-      views: 0 // ✅ ახალი პროდუქტი 0 ნახვით იწყება
+      views: 0
     };
+
+    // ✅✅✅ ახალი: ავტომატურად მოიძიე user-ის avatar ✅✅✅
+    try {
+      const User = require('../models/User');
+      const user = await User.findById(req.user.id).select('name avatar profileImage');
+      
+      if (user) {
+        productData.userName = user.name;
+        productData.userAvatar = user.avatar || user.profileImage;
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not fetch user avatar:', error.message);
+    }
 
     console.log('💾 Creating product with data:', {
       ...productData,
@@ -523,7 +564,7 @@ const addProduct = async (req, res) => {
     const product = new Product(productData);
     await product.save();
 
-    await product.populate('userId', 'name secondName profileImage');
+    await product.populate('userId', 'name secondName profileImage avatar');
 
     console.log('✅ Product created successfully:', product.title);
 
@@ -596,7 +637,6 @@ const updateProduct = async (req, res) => {
       req.body.images = newImages;
     }
 
-    // ✅ განახლებისას views არ უნდა შეიცვალოს!
     const allowedFields = ['title', 'cities', 'category', 'email', 'year', 'phone', 'price', 'description', 'images'];
     const updateData = {};
     
@@ -616,11 +656,12 @@ const updateProduct = async (req, res) => {
       }
     });
 
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
-    ).populate('userId', 'name secondName profileImage');
+    ).populate('userId', 'name secondName profileImage avatar');
 
     res.status(200).json({
       success: true,
@@ -701,12 +742,12 @@ const getCategoryStats = async (req, res) => {
           avgPrice: { $avg: '$price' },
           minPrice: { $min: '$price' },
           maxPrice: { $max: '$price' },
-          totalViews: { $sum: '$views' }, // ✅ ნახვების ჯამი
-          avgViews: { $avg: '$views' } // ✅ ნახვების საშუალო
+          totalViews: { $sum: '$views' },
+          avgViews: { $avg: '$views' }
         }
       },
       {
-        $sort: { totalViews: -1 } // ✅ ყველაზე ნანახი კატეგორიები
+        $sort: { totalViews: -1 }
       }
     ]);
 
@@ -737,7 +778,8 @@ const searchProducts = async (req, res) => {
       filter.slug = slug;
     }
 
-    const results = await Product.find(filter).populate('userId', 'name secondName profileImage');
+    // ✅✅✅ ახალი: avatar დაემატა populate-ში ✅✅✅
+    const results = await Product.find(filter).populate('userId', 'name secondName profileImage avatar');
 
     res.status(200).json({
       success: true,
@@ -763,8 +805,8 @@ module.exports = {
   getProductBySlug,
   getCategoryStats,
   searchProducts,
-  incrementProductViews, // ✅ ახალი
-  getPopularProducts, // ✅ ახალი
-  getViewsStatistics, // ✅ ახალი
-  getProductViews // ✅ ახალი - კონკრეტული პროდუქტის ნახვები
+  incrementProductViews,
+  getPopularProducts,
+  getViewsStatistics,
+  getProductViews
 };

@@ -18,13 +18,11 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    sparse: true, // ეს საშუალებას აძლევს null/undefined მნიშვნელობებს, მაგრამ unique-ს ინარჩუნებს არ-null მნიშვნელობებისთვის
+    sparse: true,
     unique: true,
     validate: {
       validator: function(v) {
-        // თუ phone არ არის მითითებული, ვალიდაცია გაიარება
         if (!v) return true;
-        // ტელეფონი უნდა იყოს რიცხვები და შეიძლება დაიწყოს +ით
         return /^\+?[0-9]{9,15}$/.test(v.toString());
       },
       message: 'ტელეფონის ნომერი არასწორია'
@@ -36,9 +34,7 @@ const userSchema = new mongoose.Schema({
     unique: true,
     validate: {
       validator: function(v) {
-        // თუ personalNumber არ არის მითითებული, ვალიდაცია გაიარება
         if (!v) return true;
-        // პირადი ნომერი უნდა იყოს 11 ციფრი (საქართველოსთვის)
         return /^[0-9]{11}$/.test(v.toString());
       },
       message: 'პირადი ნომერი უნდა შედგებოდეს 11 ციფრისგან'
@@ -48,7 +44,7 @@ const userSchema = new mongoose.Schema({
     type: Date,
     validate: {
       validator: function(v) {
-        if (!v) return true; // Optional field
+        if (!v) return true;
         const today = new Date();
         const age = today.getFullYear() - v.getFullYear();
         return v <= today && age >= 13 && age <= 120;
@@ -81,10 +77,14 @@ const userSchema = new mongoose.Schema({
   profileImage: {
     type: String,
     default: "https://i.ibb.co/GvshXkLK/307ce493-b254-4b2d-8ba4-d12c080d6651.jpg"
+  },
+  // ✅✅✅ ახალი: avatar ველი (profileImage-ის alias) ✅✅✅
+  avatar: {
+    type: String,
+    default: "https://i.ibb.co/GvshXkLK/307ce493-b254-4b2d-8ba4-d12c080d6651.jpg"
   }
 }, { 
   timestamps: true,
-  // ეს საშუალებას აძლევს JSON-ში გადაქცევისას ზოგიერთი ველის დამალვას
   toJSON: {
     transform: function(doc, ret) {
       delete ret.password;
@@ -93,7 +93,20 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Index-ები უნიკურობისთვის (sparse index-ები null მნიშვნელობებს ტოვებს)
+// ✅✅✅ Virtual field - ავტომატურად sync avatar და profileImage ✅✅✅
+userSchema.pre('save', function(next) {
+  // თუ profileImage შეიცვალა და avatar არ შეცვლილა - sync
+  if (this.isModified('profileImage') && !this.isModified('avatar')) {
+    this.avatar = this.profileImage;
+  }
+  // თუ avatar შეიცვალა და profileImage არ შეცვლილა - sync
+  if (this.isModified('avatar') && !this.isModified('profileImage')) {
+    this.profileImage = this.avatar;
+  }
+  next();
+});
+
+// Index-ები უნიკურობისთვის
 userSchema.index({ phone: 1 }, { sparse: true });
 userSchema.index({ personalNumber: 1 }, { sparse: true });
 

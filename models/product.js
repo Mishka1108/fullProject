@@ -1,4 +1,4 @@
-// models/product.js - ნახვების ფუნქციით განახლებული
+// models/product.js - განახლებული ვერსია userAvatar ველით
 const mongoose = require("mongoose");
 
 // Slug generator function
@@ -6,10 +6,10 @@ function generateSlug(title) {
   return title
     .toLowerCase()
     .trim()
-    .replace(/[^\u10A0-\u10FF\w\s-]/g, '') // ქართული ასოები + ლათინური + რიცხვები
-    .replace(/\s+/g, '-') // spaces -> hyphens
-    .replace(/-+/g, '-') // multiple hyphens -> single hyphen
-    .replace(/^-|-$/g, ''); // remove leading/trailing hyphens
+    .replace(/[^\u10A0-\u10FF\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 const productSchema = new mongoose.Schema({
@@ -65,6 +65,18 @@ const productSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  
+  // ✅✅✅ ახალი ველები - User ინფორმაცია ✅✅✅
+  userName: {
+    type: String,
+    required: false
+  },
+  userAvatar: {
+    type: String,
+    required: false
+  },
+  // ✅✅✅ აქ დასრულდა ახალი ველები ✅✅✅
+  
   images: [{
     type: String,
     required: false
@@ -73,13 +85,11 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: false
   },
-  // ✅ ნახვების ველი
   views: {
     type: Number,
     default: 0,
     min: 0
   },
-  // ✅ ნახვების ისტორია (optional - analytics-ისთვის)
   viewHistory: [{
     viewedAt: {
       type: Date,
@@ -94,7 +104,6 @@ const productSchema = new mongoose.Schema({
       required: false
     }
   }],
-  // ✅ ლასტ ნახვის თარიღი
   lastViewedAt: {
     type: Date,
     default: null
@@ -108,7 +117,6 @@ const productSchema = new mongoose.Schema({
 // Pre-save middleware
 productSchema.pre('save', async function(next) {
   try {
-    // Slug generation
     if (this.isModified('title') || !this.slug) {
       let baseSlug = generateSlug(this.title);
       let uniqueSlug = baseSlug;
@@ -125,7 +133,6 @@ productSchema.pre('save', async function(next) {
       this.slug = uniqueSlug;
     }
     
-    // Image validation
     if ((!this.images || this.images.length === 0) && !this.image) {
       const error = new Error('მინიმუმ ერთი სურათი აუცილებელია');
       error.name = 'ValidationError';
@@ -157,9 +164,8 @@ productSchema.virtual('allImages').get(function() {
   return this.image ? [this.image] : [];
 });
 
-// ✅ Virtual field - ნახვების სტატისტიკისთვის
 productSchema.virtual('isPopular').get(function() {
-  return this.views > 100; // 100+ ნახვა = პოპულარული
+  return this.views > 100;
 });
 
 productSchema.virtual('viewsDisplay').get(function() {
@@ -175,7 +181,7 @@ productSchema.index({ category: 1 });
 productSchema.index({ cities: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ slug: 1 });
-productSchema.index({ views: -1 }); // ✅ ნახვების index პოპულარული პროდუქტებისთვის
+productSchema.index({ views: -1 });
 productSchema.index({ title: 'text', description: 'text' });
 
 // Static methods
@@ -195,26 +201,21 @@ productSchema.statics.findByCity = function(city) {
   return this.find({ cities: { $regex: new RegExp(city, 'i') } }).sort({ createdAt: -1 });
 };
 
-// ✅ ნახვების ტოპ პროდუქტები
 productSchema.statics.findMostViewed = function(limit = 10) {
   return this.find()
-    .populate('userId', 'name secondName profileImage')
+    .populate('userId', 'name secondName profileImage avatar')
     .sort({ views: -1 })
     .limit(limit);
 };
 
-// ✅ ნახვების increment მეთოდი
 productSchema.methods.incrementViews = async function(ipAddress = null, userAgent = null) {
   try {
-    // ძირითადი views counter
     this.views += 1;
     this.lastViewedAt = new Date();
     
-    // ✅ ნახვების ისტორიის დამატება (optional)
     if (ipAddress || userAgent) {
-      // ლიმიტი ისტორიაზე - ბოლო 100 ნახვა
       if (this.viewHistory.length >= 100) {
-        this.viewHistory = this.viewHistory.slice(-99); // Keep last 99
+        this.viewHistory = this.viewHistory.slice(-99);
       }
       
       this.viewHistory.push({
@@ -232,7 +233,6 @@ productSchema.methods.incrementViews = async function(ipAddress = null, userAgen
   }
 };
 
-// ✅ ნახვების სტატისტიკა
 productSchema.statics.getViewsStats = async function() {
   try {
     const stats = await this.aggregate([
@@ -261,13 +261,13 @@ productSchema.statics.getViewsStats = async function() {
   }
 };
 
-// Instance method
 productSchema.methods.getOwnerInfo = async function() {
   const User = mongoose.model('User');
-  const user = await User.findById(this.userId).select('name secondName profileImage');
+  const user = await User.findById(this.userId).select('name secondName profileImage avatar');
   return {
     name: user ? `${user.name} ${user.secondName}` : 'უცნობი მომხმარებელი',
-    profileImage: user ? user.profileImage : null
+    profileImage: user ? (user.profileImage || user.avatar) : null,
+    avatar: user ? (user.avatar || user.profileImage) : null
   };
 };
 

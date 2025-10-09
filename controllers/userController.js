@@ -7,14 +7,18 @@ exports.updateProfileImage = async (req, res) => {
       return res.status(400).json({ message: 'No image uploaded' });
     }
     
-    console.log('File uploaded to Cloudinary:', req.file); // Debug log
+    console.log('File uploaded to Cloudinary:', req.file);
     
     // Cloudinary returns the URL in req.file.path
     const imageUrl = req.file.path;
     
+    // ✅✅✅ ახალი: ორივე ველი განახლდება - profileImage და avatar ✅✅✅
     const user = await User.findByIdAndUpdate(
       req.user.id,
-      { profileImage: imageUrl },
+      { 
+        profileImage: imageUrl,
+        avatar: imageUrl  // ✅ ეს დაემატა!
+      },
       { new: true }
     ).select('-password');
 
@@ -22,7 +26,11 @@ exports.updateProfileImage = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
     
-    console.log('User updated with new image:', user); // Debug log
+    console.log('✅ User updated with new image:', {
+      userId: user._id,
+      profileImage: user.profileImage,
+      avatar: user.avatar
+    });
     
     res.status(200).json({ 
       message: 'Profile image updated successfully', 
@@ -35,7 +43,8 @@ exports.updateProfileImage = async (req, res) => {
         personalNumber: user.personalNumber,
         dateOfBirth: user.dateOfBirth,
         isVerified: user.isVerified,
-        profileImage: user.profileImage
+        profileImage: user.profileImage,
+        avatar: user.avatar  // ✅ response-შიც დაემატა
       }
     });
   } catch (error) {
@@ -70,7 +79,6 @@ exports.updateProfile = async (req, res) => {
     
     // ვალიდაცია phone-ისთვის
     if (phone) {
-      // ტელეფონი უნდა იყოს რიცხვები და შეიძლება დაიწყოს +ით
       const phoneRegex = /^\+?[0-9]{9,15}$/;
       if (!phoneRegex.test(phone.toString())) {
         errors.push('ტელეფონის ნომერი არასწორია');
@@ -79,7 +87,6 @@ exports.updateProfile = async (req, res) => {
     
     // ვალიდაცია personalNumber-ისთვის
     if (personalNumber) {
-      // პირადი ნომერი უნდა იყოს 11 ციფრი (საქართველოსთვის)
       const personalNumberRegex = /^[0-9]{11}$/;
       if (!personalNumberRegex.test(personalNumber.toString())) {
         errors.push('პირადი ნომერი უნდა შედგებოდეს 11 ციფრისგან');
@@ -137,7 +144,8 @@ exports.updateProfile = async (req, res) => {
         personalNumber: user.personalNumber,
         dateOfBirth: user.dateOfBirth,
         isVerified: user.isVerified,
-        profileImage: user.profileImage
+        profileImage: user.profileImage,
+        avatar: user.avatar  // ✅ ეს დაემატა
       }
     });
   } catch (error) {
