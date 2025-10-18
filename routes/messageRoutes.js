@@ -1,8 +1,7 @@
-// 📁 routes/messageRoutes.js - ✅ FIXED
-// ============================================
+// 📁 routes/messageRoutes.js
 const express = require("express");
 const router = express.Router();
-const { verifyToken } = require("../middleware/auth"); // ✅ Import auth middleware
+const { verifyToken } = require("../middleware/auth");
 const {
   getConversations,
   getConversation,

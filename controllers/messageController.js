@@ -1,5 +1,4 @@
-// 📁 controllers/messageController.js - ✅ FIXED
-// ============================================
+// 📁 controllers/messageController.js - ✅ WITH SOCKET.IO
 const Message = require("../models/Message");
 const User = require("../models/User");
 
@@ -117,7 +116,6 @@ exports.getConversation = async (req, res) => {
     console.log('Between:', userId, 'and', otherId);
     console.log('Authenticated user:', authenticatedUserId);
 
-    // ✅ Security check - მომხმარებელს შეუძლია მხოლოდ საკუთარი მესიჯების ნახვა
     if (userId !== authenticatedUserId.toString()) {
       return res.status(403).json({
         success: false,
@@ -150,10 +148,9 @@ exports.getConversation = async (req, res) => {
   }
 };
 
-// 📩 მესიჯის გაგზავნა - ✅ FIXED VERSION
+// 📩 მესიჯის გაგზავნა - ✅ WITH SOCKET.IO
 exports.sendMessage = async (req, res) => {
   try {
-    // ✅ senderId წამოღება authentication-დან
     const senderId = req.userId || req.user?.id || req.user?._id;
     const { receiverId, content, productId } = req.body;
     
@@ -162,7 +159,6 @@ exports.sendMessage = async (req, res) => {
     console.log('To:', receiverId);
     console.log('Content:', content?.substring(0, 50));
     
-    // ✅ Validation
     if (!senderId) {
       return res.status(401).json({ 
         success: false, 
@@ -177,7 +173,6 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    // ✅ შემოწმება რომ sender და receiver განსხვავებულები არიან
     if (senderId.toString() === receiverId.toString()) {
       return res.status(400).json({
         success: false,
@@ -185,7 +180,6 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    // ✅ შემოწმება რომ receiver არსებობს
     const receiverExists = await User.findById(receiverId);
     if (!receiverExists) {
       return res.status(404).json({
@@ -194,7 +188,6 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    // ✅ შემოწმება რომ sender არსებობს
     const senderExists = await User.findById(senderId);
     if (!senderExists) {
       return res.status(404).json({
@@ -203,7 +196,6 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
-    // ✅ მესიჯის შექმნა
     const message = await Message.create({ 
       senderId, 
       receiverId, 
@@ -212,11 +204,45 @@ exports.sendMessage = async (req, res) => {
       read: false 
     });
 
-    // ✅ Populate sender და receiver info
     await message.populate('senderId', 'name avatar');
     await message.populate('receiverId', 'name avatar');
 
     console.log('✅ Message sent successfully:', message._id);
+
+    // ✅ Send real-time notification via Socket.IO
+    const io = req.app.get('io');
+    const connectedUsers = req.app.get('connectedUsers');
+    
+    if (io && connectedUsers) {
+      const receiverSocketId = connectedUsers.get(receiverId);
+      
+      if (receiverSocketId) {
+        console.log(`🔔 Sending real-time notification to ${receiverId}`);
+        
+        // Emit new message to receiver
+        io.to(receiverSocketId).emit('message:new', {
+          message: message,
+          conversationId: `${receiverId}_${senderId}`
+        });
+        
+        // Emit conversation update to receiver
+        io.to(receiverSocketId).emit('conversation:update', {
+          senderId: senderId,
+          lastMessage: message
+        });
+      } else {
+        console.log(`⚠️ Receiver ${receiverId} is not connected`);
+      }
+      
+      // Also notify sender for UI update
+      const senderSocketId = connectedUsers.get(senderId.toString());
+      if (senderSocketId) {
+        io.to(senderSocketId).emit('message:sent', {
+          message: message,
+          conversationId: `${senderId}_${receiverId}`
+        });
+      }
+    }
 
     res.status(201).json({ 
       success: true, 
@@ -226,7 +252,6 @@ exports.sendMessage = async (req, res) => {
   } catch (err) {
     console.error('❌ Error in sendMessage:', err);
     
-    // ✅ Better error handling
     if (err.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
@@ -256,7 +281,6 @@ exports.getUnreadCount = async (req, res) => {
     const { userId } = req.params;
     const authenticatedUserId = req.userId || req.user?.id || req.user?._id;
     
-    // ✅ Security check
     if (userId !== authenticatedUserId.toString()) {
       return res.status(403).json({
         success: false,
@@ -285,7 +309,7 @@ exports.getUnreadCount = async (req, res) => {
   }
 };
 
-// ✅ საუბრის მესიჯების წაკითხულად მონიშვნა
+// ✅ საუბრის მესიჯების წაკითხულად მონიშვნა - WITH SOCKET.IO
 exports.markAsRead = async (req, res) => {
   try {
     const { userId, otherId } = req.params;
@@ -293,9 +317,7 @@ exports.markAsRead = async (req, res) => {
     
     console.log('\n✅ === MARK AS READ ===');
     console.log('Marking messages from', otherId, 'to', userId, 'as read');
-    console.log('Authenticated user:', authenticatedUserId);
 
-    // ✅ Security check
     if (userId !== authenticatedUserId.toString()) {
       return res.status(403).json({
         success: false,
@@ -313,6 +335,22 @@ exports.markAsRead = async (req, res) => {
     );
 
     console.log('✅ Marked', result.modifiedCount, 'messages as read');
+
+    // ✅ Notify sender via Socket.IO that messages were read
+    const io = req.app.get('io');
+    const connectedUsers = req.app.get('connectedUsers');
+    
+    if (io && connectedUsers && result.modifiedCount > 0) {
+      const senderSocketId = connectedUsers.get(otherId);
+      
+      if (senderSocketId) {
+        console.log(`📖 Notifying ${otherId} that messages were read`);
+        io.to(senderSocketId).emit('messages:read', {
+          userId: userId,
+          count: result.modifiedCount
+        });
+      }
+    }
 
     res.json({ 
       success: true, 
@@ -347,7 +385,6 @@ exports.deleteConversation = async (req, res) => {
       });
     }
 
-    // ✅ Security check
     if (user1 !== userId.toString() && user2 !== userId.toString()) {
       return res.status(403).json({
         success: false,

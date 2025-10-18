@@ -1,15 +1,41 @@
 // ============================================
-// 📁 index.js - UPDATED VERSION
+// 📁 index.js - UPDATED WITH SOCKET.IO
 // ============================================
 const express = require("express");
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const rateLimit = require('express-rate-limit');
+const http = require('http');
+const socketIO = require('socket.io');
 
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
+
+// ✅ Socket.IO Configuration
+const io = socketIO(server, {
+  cors: {
+    origin: [
+      'https://market-zone.netlify.app',
+      'https://www.imarketzone.ge',
+      'http://localhost:4200',
+      'http://localhost:3000',
+      'http://localhost:8080',
+      process.env.CLIENT_URL
+    ].filter(Boolean),
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
+
+// Make io accessible to routes
+app.set('io', io);
+
 mongoose.set('strictQuery', true);
 
 // ✅ CORS Configuration
@@ -83,6 +109,57 @@ if (process.env.NODE_ENV === 'production') {
   app.use('/api/', limiter);
 }
 
+// ✅ Socket.IO Connection Handler
+const connectedUsers = new Map(); // userId -> socketId mapping
+
+io.on('connection', (socket) => {
+  console.log('🔌 New socket connection:', socket.id);
+
+  // User joins with their userId
+  socket.on('user:join', (userId) => {
+    if (userId) {
+      connectedUsers.set(userId, socket.id);
+      socket.userId = userId;
+      console.log(`✅ User ${userId} connected with socket ${socket.id}`);
+      console.log(`👥 Total connected users: ${connectedUsers.size}`);
+    }
+  });
+
+  // Handle typing indicator
+  socket.on('typing:start', ({ userId, receiverId }) => {
+    const receiverSocketId = connectedUsers.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('typing:start', { userId });
+    }
+  });
+
+  socket.on('typing:stop', ({ userId, receiverId }) => {
+    const receiverSocketId = connectedUsers.get(receiverId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('typing:stop', { userId });
+    }
+  });
+
+  // Handle disconnect
+  socket.on('disconnect', () => {
+    if (socket.userId) {
+      connectedUsers.delete(socket.userId);
+      console.log(`❌ User ${socket.userId} disconnected`);
+      console.log(`👥 Total connected users: ${connectedUsers.size}`);
+    } else {
+      console.log('❌ Socket disconnected:', socket.id);
+    }
+  });
+
+  // Handle errors
+  socket.on('error', (error) => {
+    console.error('🔴 Socket error:', error);
+  });
+});
+
+// Make connectedUsers accessible to routes
+app.set('connectedUsers', connectedUsers);
+
 // Health Check Endpoints
 app.get('/health', (req, res) => {
   res.status(200).json({
@@ -90,7 +167,8 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     service: 'MarketZone API',
-    version: '1.0.0'
+    version: '1.0.0',
+    connectedUsers: connectedUsers.size
   });
 });
 
@@ -98,7 +176,9 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'alive',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    socketIO: 'active',
+    connectedUsers: connectedUsers.size
   });
 });
 
@@ -108,6 +188,10 @@ app.get('/', (req, res) => {
     message: 'MarketZone API Server',
     version: '1.0.0',
     status: 'running',
+    socketIO: {
+      status: 'active',
+      connectedUsers: connectedUsers.size
+    },
     endpoints: {
       health: '/health',
       api_health: '/api/health',
@@ -117,30 +201,6 @@ app.get('/', (req, res) => {
       products: '/api/products',
       contact: '/api/contact',
       messages: '/api/messages'
-    },
-    documentation: {
-      auth: {
-        register: 'POST /api/auth/register',
-        login: 'POST /api/auth/login',
-        verify: 'GET /api/auth/verify'
-      },
-      products: {
-        getAll: 'GET /api/products',
-        getById: 'GET /api/products/:id',
-        getBySlug: 'GET /api/products/by-slug/:slug',
-        getUserProducts: 'GET /api/products/user (auth)',
-        addProduct: 'POST /api/products (auth)',
-        updateProduct: 'PUT /api/products/:id (auth)',
-        deleteProduct: 'DELETE /api/products/:id (auth)'
-      },
-      messages: {
-        sendMessage: 'POST /api/messages/send (auth)',
-        getConversations: 'GET /api/messages/conversations (auth)',
-        getConversation: 'GET /api/messages/conversation/:userId/:otherId (auth)',
-        getUnreadCount: 'GET /api/messages/unread-count/:userId (auth)',
-        markAsRead: 'PUT /api/messages/mark-read/:userId/:otherId (auth)',
-        deleteConversation: 'DELETE /api/messages/conversation/:conversationId (auth)'
-      }
     }
   });
 });
@@ -151,7 +211,7 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/users", require("./routes/user"));
 app.use("/api/products", require("./routes/product"));
 app.use("/api/contact", require("./routes/contactRoutes"));
-app.use("/api/messages", require("./routes/messageRoutes")); // ✅ Messages Routes
+app.use("/api/messages", require("./routes/messageRoutes"));
 
 // Global Error Handler
 app.use((err, req, res, next) => {
@@ -209,16 +269,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 Handler for API
-app.use('/api/*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: 'API endpoint not found',
-    path: req.originalUrl
-  });
-});
-
-// 404 Handler for All Other Routes
+// 404 Handler
 app.use('*', (req, res) => {
   if (req.originalUrl.startsWith('/api/')) {
     return res.status(404).json({
@@ -229,14 +280,18 @@ app.use('*', (req, res) => {
 
   res.status(200).json({
     message: 'MarketZone API Server',
-    frontend: 'https://www.imarketzone.ge',
-    api_docs: req.protocol + '://' + req.get('host') + '/'
+    frontend: 'https://www.imarketzone.ge'
   });
 });
 
 // Graceful Shutdown
 const gracefulShutdown = (signal) => {
   console.log(`\n${signal} received: starting graceful shutdown`);
+  
+  // Close Socket.IO connections
+  io.close(() => {
+    console.log('✅ Socket.IO closed');
+  });
   
   if (global.server) {
     global.server.close((err) => {
@@ -292,25 +347,16 @@ const startServer = async () => {
     console.log(`📊 Database: ${mongoose.connection.db.databaseName}`);
     
     const PORT = process.env.PORT || 10000;
-    const server = app.listen(PORT, () => {
+    global.server = server.listen(PORT, () => {
       console.log(`\n🚀 MarketZone API Server`);
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`📡 Port: ${PORT}`);
       console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔌 Socket.IO: Active`);
       console.log(`📊 Health: http://localhost:${PORT}/health`);
-      console.log(`📱 API Docs: http://localhost:${PORT}/`);
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      console.log(`\n✅ Available Endpoints:`);
-      console.log(`   🔐 Auth:     /api/auth`);
-      console.log(`   👥 Users:    /api/users`);
-      console.log(`   📦 Products: /api/products`);
-      console.log(`   💬 Messages: /api/messages`);
-      console.log(`   📧 Contact:  /api/contact`);
-      console.log(`   👑 Admin:    /api/admin`);
-      console.log(`\n🎯 Ready to accept requests!\n`);
+      console.log(`\n✅ Ready to accept requests!\n`);
     });
-    
-    global.server = server;
     
     server.on('error', (error) => {
       if (error.code === 'EADDRINUSE') {
@@ -328,5 +374,4 @@ const startServer = async () => {
   }
 };
 
-// Start the server
 startServer();
