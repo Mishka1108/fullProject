@@ -1,4 +1,4 @@
-// routes/product.js - ნახვების ფუნქციით განახლებული
+// routes/product.js - სრული განახლებული ვერსია
 const express = require('express');
 const router = express.Router();
 const { uploadProductImages, handleUploadError } = require('../utils/productUpload');
@@ -13,53 +13,70 @@ const {
   getProductBySlug,
   getCategoryStats,
   searchProducts,
-  incrementProductViews, // ✅ ახალი
-  getPopularProducts, // ✅ ახალი
-  getViewsStatistics, // ✅ ახალი
-  getProductViews // ✅ ახალი - კონკრეტული პროდუქტის ნახვები
+  incrementProductViews,
+  getPopularProducts,
+  getViewsStatistics,
+  getProductViews
 } = require('../controllers/productController');
 
-// ✅ ყველა პროდუქტის მიღება + ფილტრები და პაგინაცია
+// ============================================
+// PUBLIC ROUTES (NO AUTHENTICATION REQUIRED)
+// ============================================
+
+// ✅ Get all products with filters and pagination
 router.get('/', getAllProducts);
 
-// ✅ საჯარო endpoint-ის alias
+// ✅ Alias for public products
 router.get('/public', getAllProducts);
 
-// ✅ ნახვების სტატისტიკა
+// ✅ Statistics routes (specific routes first!)
 router.get('/stats/views', getViewsStatistics);
-
-// ✅ კატეგორიების სტატისტიკა (ნახვებითაც)
 router.get('/stats/categories', getCategoryStats);
 
-// ✅ პოპულარული პროდუქტები (ნახვების მიხედვით)
+// ✅ Popular products (by views)
 router.get('/popular', getPopularProducts);
 
-// ✅ SLUG ROUTE - აუცილებლად უნდა იყოს ID route-ამდე!
+// ✅ Search products
+router.get('/search', searchProducts);
+
+// ============================================
+// ✅✅✅ CRITICAL: SLUG ROUTE MUST BE BEFORE /:id ✅✅✅
+// ============================================
 router.get('/by-slug/:slug', getProductBySlug);
 
-// ✅ Frontend-ის მოთხოვნის შესაბამისი routes
-router.post('/:id/view', incrementProductViews); // Frontend ითხოვს /view (არა /views)
-router.get('/:id/views', getProductViews); // კონკრეტული პროდუქტის ნახვები
+// ============================================
+// VIEW TRACKING ROUTES
+// ============================================
+router.post('/:id/view', incrementProductViews);
+router.get('/:id/views', getProductViews);
+router.post('/:id/views', incrementProductViews); // backward compatibility
 
-// ✅ ძველი route-ი backward compatibility-სთვის
-router.post('/:id/views', incrementProductViews);
+// ============================================
+// PROTECTED ROUTES (AUTHENTICATION REQUIRED)
+// ============================================
 
-// ✅ დაცული routes (authentication სჭირდება)
+// ✅ Get current user's products
 router.get('/user', verifyToken, getUserProducts);
 
-// ✅ პროდუქტის დამატება
+// ✅ Add new product
 router.post('/', verifyToken, uploadProductImages, addProduct);
 
-// ✅ პროდუქტის განახლება
+// ✅ Update product
 router.put('/:id', verifyToken, uploadProductImages, updateProduct);
 
-// ✅ პროდუქტის წაშლა
+// ✅ Delete product
 router.delete('/:id', verifyToken, deleteProduct);
 
-// ✅ კონკრეტული პროდუქტის მიღება ID-ით (ბოლოში!)
+// ============================================
+// ✅✅✅ DYNAMIC ROUTES (MUST BE LAST!) ✅✅✅
+// ============================================
+
+// ✅ Get single product by ID (MUST BE LAST!)
 router.get('/:id', getProductById);
 
-// Upload error handling
+// ============================================
+// ERROR HANDLING MIDDLEWARE
+// ============================================
 router.use(handleUploadError);
 
 module.exports = router;
