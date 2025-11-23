@@ -198,14 +198,18 @@ const getProductById = async (req, res) => {
 };
 
 // ============================================
-// GET ALL PRODUCTS (with filters)
+// GET ALL PRODUCTS (with filters and FULL PAGINATION)
 // ============================================
 const getAllProducts = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 12;
-    const skip = (page - 1) * limit;
+    // 🔹 Pagination პარამეტრები (page 0-დან იწყება frontend-ზე)
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = page * limit;
 
+    console.log('📄 Pagination:', { page, limit, skip });
+
+    // 🔹 ფილტრები
     const filter = {};
     
     if (req.query.category && req.query.category !== 'all') {
@@ -218,8 +222,8 @@ const getAllProducts = async (req, res) => {
     
     if (req.query.minPrice || req.query.maxPrice) {
       filter.price = {};
-      if (req.query.minPrice) filter.price.$gte = parseInt(req.query.minPrice);
-      if (req.query.maxPrice) filter.price.$lte = parseInt(req.query.maxPrice);
+      if (req.query.minPrice) filter.price.$gte = parseFloat(req.query.minPrice);
+      if (req.query.maxPrice) filter.price.$lte = parseFloat(req.query.maxPrice);
     }
     
     if (req.query.year) {
@@ -233,6 +237,7 @@ const getAllProducts = async (req, res) => {
       ];
     }
 
+    // 🔹 Sort
     let sortOption = { createdAt: -1 };
     
     if (req.query.sortBy) {
@@ -269,6 +274,12 @@ const getAllProducts = async (req, res) => {
       }
     }
 
+    // 🔹 მთლიანი რაოდენობის დათვლა (PAGINATION-ისთვის)
+    const total = await Product.countDocuments(filter);
+
+    console.log('📊 Total products matching filter:', total);
+
+    // 🔹 პროდუქტების მიღება pagination-ით
     const products = await Product.find(filter)
       .populate('userId', 'name email phone avatar profileImage')
       .sort(sortOption)
@@ -276,27 +287,36 @@ const getAllProducts = async (req, res) => {
       .limit(limit)
       .lean();
 
+    console.log(`✅ Returning ${products.length} products (page ${page}, limit ${limit})`);
+
+    // 🔹 User info-ს დამატება და Views normalization
     const enhancedProducts = products.map(product => ({
       ...product,
       userName: product.userId?.name || product.userName || 'არ არის მითითებული',
       email: product.userId?.email || product.email || 'არ არის მითითებული',
       phone: product.userId?.phone || product.phone || 'არ არის მითითებული',
-      userAvatar: product.userId?.avatar || product.userId?.profileImage || product.userAvatar
+      userAvatar: product.userId?.avatar || product.userId?.profileImage || product.userAvatar,
+      // 🔹 View fields normalization
+      viewCount: product.views || product.viewCount || 0,
+      views: product.views || product.viewCount || 0
     }));
 
-    const total = await Product.countDocuments(filter);
-
+    // 🔹 Response-ის ფორმატი (FRONTEND-თან თავსებადი)
     res.status(200).json({
       success: true,
       data: enhancedProducts,
-      products: enhancedProducts,
+      products: enhancedProducts, // backward compatibility
+      total: total, // 🔥 ᲐᲣᲪᲘᲚᲔᲑᲔᲚᲘᲐ pagination-ისთვის
+      page: page,
+      limit: limit,
+      totalPages: Math.ceil(total / limit),
       pagination: {
         page,
         limit,
         total,
         pages: Math.ceil(total / limit),
-        hasNext: page < Math.ceil(total / limit),
-        hasPrev: page > 1
+        hasNext: page < Math.ceil(total / limit) - 1,
+        hasPrev: page > 0
       },
       filters: {
         category: req.query.category,
@@ -831,7 +851,7 @@ const getCategoryStats = async (req, res) => {
     console.error('❌ Error fetching category stats:', error);
     res.status(500).json({
       success: false,
-      message: 'სერვერის შეცდომა'
+  message: 'სერვერის შეცდომა'
     });
   }
 };
