@@ -1,8 +1,10 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const path = require('path');
-const fs = require('fs');
+const { OAuth2Client } = require('google-auth-library');
+
+// Google OAuth Client
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // sendEmail იმპორტის გასწორება
 let sendEmailModule;
@@ -11,11 +13,9 @@ let sendVerificationEmail;
 let sendPasswordResetEmail;
 
 try {
-  // იმპორტი მთელი მოდულისა
   sendEmailModule = require('../utils/sendEmail2');
   console.log('sendEmailModule imported successfully:', Object.keys(sendEmailModule));
   
-  // ივლებთ სპეციფიკურ ფუნქციებს
   sendEmail = sendEmailModule.sendEmail;
   sendVerificationEmail = sendEmailModule.sendVerificationEmail;
   sendPasswordResetEmail = sendEmailModule.sendPasswordResetEmail;
@@ -148,7 +148,7 @@ const register = async (req, res) => {
     console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
     console.log("BASE_URL:", process.env.BASE_URL ? "SET" : "NOT SET");
 
-    // Email verification - გასწორებული შემოწმება
+    // Email verification
     console.log("Checking sendEmail availability:");
     console.log("sendEmailModule exists:", !!sendEmailModule);
     console.log("sendVerificationEmail exists:", !!sendVerificationEmail);
@@ -158,11 +158,9 @@ const register = async (req, res) => {
       try {
         console.log("Attempting to send verification email...");
         
-        // Verification URL
         const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
         console.log("Verification URL:", verificationUrl);
 
-        // Send verification email using the specific function
         const result = await sendVerificationEmail(
           email,
           "ანგარიშის გააქტიურება",
@@ -182,7 +180,6 @@ const register = async (req, res) => {
         console.error("Error sending verification email:", emailError);
         console.error("Email error stack:", emailError.stack);
         
-        // If email fails, still return success but with different message
         res.status(201).json({ 
           message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ გააქტიურების ელფოსტა ვერ გაიგზავნა. შეცდომა: " + emailError.message,
           userId: user._id,
@@ -194,7 +191,6 @@ const register = async (req, res) => {
       console.error("sendVerificationEmail function is not available");
       console.error("Available functions:", sendEmailModule ? Object.keys(sendEmailModule) : 'Module not loaded');
       
-      // Return success without email verification
       res.status(201).json({ 
         message: "მომხმარებელი წარმატებით დარეგისტრირდა, მაგრამ ელფოსტის სერვისი ამჟამად მიუწვდომელია.",
         userId: user._id,
@@ -210,7 +206,6 @@ const register = async (req, res) => {
     console.error("Error name:", err.name);
     console.error("Error code:", err.code);
     
-    // Handle MongoDB validation errors
     if (err.name === 'ValidationError') {
       const messages = Object.values(err.errors).map(val => val.message);
       return res.status(400).json({
@@ -219,7 +214,6 @@ const register = async (req, res) => {
       });
     }
     
-    // Handle duplicate key errors
     if (err.code === 11000) {
       const field = Object.keys(err.keyValue)[0];
       let message = 'ამ მონაცემებით უკვე არსებობს მომხმარებელი';
@@ -251,7 +245,6 @@ const resendVerification = async (req, res) => {
       return res.status(400).json({ message: "ელ-ფოსტა სავალდებულოა" });
     }
 
-    // Find user
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(400).json({ message: "მომხმარებელი ვერ მოიძებნა" });
@@ -261,22 +254,18 @@ const resendVerification = async (req, res) => {
       return res.status(400).json({ message: "ელ-ფოსტა უკვე ვერიფიცირებულია" });
     }
 
-    // შემოწმება თუ sendVerificationEmail ფუნქცია ხელმისაწვდომია
     if (!sendVerificationEmail || typeof sendVerificationEmail !== 'function') {
       return res.status(500).json({ message: "ელფოსტის სერვისი ამჟამად მიუწვდომელია" });
     }
 
-    // Create new verification token
     const emailToken = jwt.sign(
       { id: user._id },
       process.env.EMAIL_SECRET,
       { expiresIn: '1d' }
     );
 
-    // Verification URL
     const verificationUrl = `${process.env.BASE_URL}/api/auth/verify/${emailToken}`;
 
-    // Send verification email
     await sendVerificationEmail(
       email,
       "ანგარიშის გააქტიურება",
@@ -307,7 +296,6 @@ const verifyEmail = async (req, res) => {
     user.isVerified = true;
     await user.save();
 
-    // HTML response for successful verification
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -388,13 +376,11 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if user exists
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(400).json({ message: "არასწორი ელ-ფოსტა ან პაროლი" });
     }
 
-    // Check if user is verified
     if (!user.isVerified) {
       return res.status(400).json({ 
         message: "გთხოვთ დაადასტუროთ თქვენი ელ-ფოსტა შესვლამდე",
@@ -403,13 +389,11 @@ const login = async (req, res) => {
       });
     }
 
-    // Validate password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "არასწორი ელ-ფოსტა ან პაროლი" });
     }
 
-    // Create and return JWT token
     const payload = {
       user: {
         id: user.id
@@ -433,7 +417,8 @@ const login = async (req, res) => {
             personalNumber: user.personalNumber,
             dateOfBirth: user.dateOfBirth,
             isVerified: user.isVerified,
-            profileImage: user.profileImage
+            profileImage: user.profileImage,
+            provider: user.provider
           }
         });
       }
@@ -441,6 +426,137 @@ const login = async (req, res) => {
   } catch (err) {
     console.error("Error logging in:", err);
     res.status(500).json({ message: "სერვერის შეცდომა" });
+  }
+};
+
+/**
+ * Google Sign-In
+ * @route POST /api/auth/google
+ */
+const googleLogin = async (req, res) => {
+  console.log("=== GOOGLE LOGIN START ===");
+  
+  try {
+    const { credential } = req.body;
+    
+    if (!credential) {
+      return res.status(400).json({ message: "Google credential არ არის მოწოდებული" });
+    }
+
+    console.log("Step 1: Verifying Google token");
+
+    let ticket;
+    try {
+      ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID
+      });
+    } catch (verifyError) {
+      console.error("Google token verification failed:", verifyError);
+      return res.status(401).json({ message: "Google authentication ვერ მოხერხდა" });
+    }
+
+    const payload = ticket.getPayload();
+    console.log("Step 2: Google token verified, payload:", {
+      email: payload.email,
+      name: payload.name,
+      verified: payload.email_verified
+    });
+
+    const {
+      email,
+      name,
+      family_name,
+      picture,
+      sub: googleId,
+      email_verified
+    } = payload;
+
+    if (!email_verified) {
+      return res.status(400).json({ message: "Google ელ-ფოსტა არ არის ვერიფიცირებული" });
+    }
+
+    console.log("Step 3: Checking if user exists");
+
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      console.log("Step 4: User exists, logging in");
+
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.provider = 'google';
+        user.isVerified = true;
+        if (!user.profileImage && picture) {
+          user.profileImage = picture;
+        }
+        await user.save();
+      }
+
+    } else {
+      console.log("Step 5: Creating new user from Google data");
+
+      user = new User({
+        name: name || '',
+        secondName: family_name || '',
+        email: email.toLowerCase(),
+        googleId: googleId,
+        provider: 'google',
+        isVerified: true,
+        profileImage: picture || '',
+        password: await bcrypt.hash(Math.random().toString(36), 10)
+      });
+
+      await user.save();
+      console.log("Step 6: New user created successfully");
+    }
+
+    console.log("Step 7: Creating JWT token");
+
+    const jwtPayload = {
+      user: {
+        id: user.id
+      }
+    };
+
+    jwt.sign(
+      jwtPayload,
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' },
+      (err, token) => {
+        if (err) {
+          console.error("JWT creation error:", err);
+          throw err;
+        }
+
+        console.log("Step 8: Login successful");
+
+        res.json({
+          success: true,
+          token,
+          user: {
+            id: user.id,
+            name: user.name,
+            secondName: user.secondName,
+            email: user.email,
+            phone: user.phone,
+            personalNumber: user.personalNumber,
+            dateOfBirth: user.dateOfBirth,
+            isVerified: user.isVerified,
+            profileImage: user.profileImage,
+            provider: user.provider
+          }
+        });
+      }
+    );
+
+  } catch (err) {
+    console.error("=== GOOGLE LOGIN ERROR ===");
+    console.error("Error:", err);
+    res.status(500).json({ 
+      message: "სერვერის შეცდომა Google authentication-ის დროს",
+      error: err.message 
+    });
   }
 };
 
@@ -461,12 +577,10 @@ const forgotPassword = async (req, res) => {
 
     console.log("Step 1: Looking for user with email:", email);
 
-    // Find user by email
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     
     if (!user) {
       console.log("User not found with email:", email);
-      // არ ვუთხროთ მომხმარებელს რომ ეს ელ-ფოსტა არ არსებობს (უსაფრთხოების მიზნით)
       return res.status(200).json({ 
         message: "თუ ეს ელ-ფოსტა რეგისტრირებულია სისტემაში, პაროლის აღდგენის ბმული გაიგზავნება" 
       });
@@ -474,7 +588,6 @@ const forgotPassword = async (req, res) => {
 
     console.log("Step 2: User found, ID:", user._id);
 
-    // შემოწმება თუ sendPasswordResetEmail ფუნქცია ხელმისაწვდომია
     if (!sendPasswordResetEmail || typeof sendPasswordResetEmail !== 'function') {
       console.error("sendPasswordResetEmail function is not available");
       return res.status(500).json({ message: "ელფოსტის სერვისი ამჟამად მიუწვდომელია" });
@@ -482,27 +595,24 @@ const forgotPassword = async (req, res) => {
 
     console.log("Step 3: Creating password reset token");
 
-    // Create password reset token (ვადა 1 საათი)
     const resetToken = jwt.sign(
       { 
         id: user._id,
         email: user.email,
         type: 'password_reset'
       },
-      process.env.JWT_SECRET, // ვიყენებთ JWT_SECRET-ს EMAIL_SECRET-ის ნაცვლად
+      process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
 
     console.log("Step 4: Password reset token created");
 
-    // Reset URL
     const resetUrl = `${process.env.CLIENT_URL}/auth/reset-password/${resetToken}`;
     console.log("Reset URL:", resetUrl);
 
     try {
       console.log("Step 5: Sending password reset email");
 
-      // Send password reset email
       const result = await sendPasswordResetEmail(
         email,
         "პაროლის აღდგენა",
@@ -579,7 +689,6 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    // შემოწმება რომ token არის password reset ტიპის
     if (decoded.type !== 'password_reset') {
       console.log("Invalid token type:", decoded.type);
       return res.status(400).json({ message: "არასწორი ტოკენის ტიპი" });
@@ -595,11 +704,9 @@ const resetPassword = async (req, res) => {
 
     console.log("Step 4: User found, updating password");
 
-    // Hash new password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Update user's password
     user.password = hashedPassword;
     await user.save();
 
@@ -642,7 +749,6 @@ const verifyResetToken = async (req, res) => {
       });
     }
 
-    // შემოწმება რომ token არის password reset ტიპის
     if (decoded.type !== 'password_reset') {
       console.log("Invalid token type:", decoded.type);
       return res.status(400).json({ 
@@ -651,7 +757,6 @@ const verifyResetToken = async (req, res) => {
       });
     }
 
-    // შემოწმება რომ მომხმარებელი არსებობს
     const user = await User.findById(decoded.id);
     if (!user) {
       console.log("User not found with ID:", decoded.id);
@@ -681,6 +786,7 @@ module.exports = {
   register,
   verifyEmail,
   login,
+  googleLogin,
   resendVerification,
   forgotPassword,
   resetPassword,
