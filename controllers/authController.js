@@ -3,10 +3,8 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { OAuth2Client } = require('google-auth-library');
 
-// Google OAuth Client
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// sendEmail იმპორტის გასწორება
 let sendEmailModule;
 let sendEmail;
 let sendVerificationEmail;
@@ -32,10 +30,6 @@ try {
   sendPasswordResetEmail = null;
 }
 
-/**
- * Register a new user
- * @route POST /api/auth/register
- */
 const register = async (req, res) => {
   console.log("=== REGISTRATION START ===");
   console.log("Request body:", req.body);
@@ -45,7 +39,6 @@ const register = async (req, res) => {
 
     console.log("Step 1: Validation started");
     
-    // Required fields validation
     if (!name || !secondName || !email || !password) {
       console.log("Validation failed: Missing required fields");
       return res.status(400).json({ 
@@ -55,7 +48,6 @@ const register = async (req, res) => {
 
     console.log("Step 2: Checking existing user");
     
-    // Check if user already exists
     let user = await User.findOne({ email });
     if (user) {
       console.log("User already exists with email:", email);
@@ -64,7 +56,6 @@ const register = async (req, res) => {
 
     console.log("Step 3: Additional validations");
     
-    // Check if phone number already exists (if provided)
     if (phone) {
       const phoneExists = await User.findOne({ phone });
       if (phoneExists) {
@@ -72,7 +63,6 @@ const register = async (req, res) => {
       }
     }
 
-    // Check if personal number already exists (if provided)
     if (personalNumber) {
       const personalNumExists = await User.findOne({ personalNumber });
       if (personalNumExists) {
@@ -80,7 +70,6 @@ const register = async (req, res) => {
       }
     }
 
-    // Additional validations
     if (phone && !/^\+?[0-9]{9,15}$/.test(phone.toString())) {
       return res.status(400).json({ message: "ტელეფონის ნომერი არასწორია" });
     }
@@ -103,7 +92,6 @@ const register = async (req, res) => {
 
     console.log("Step 4: Creating user data");
     
-    // Create user data object
     const userData = {
       name: name.trim(),
       secondName: secondName.trim(),
@@ -111,19 +99,16 @@ const register = async (req, res) => {
       password
     };
 
-    // Add optional fields if provided
     if (phone) userData.phone = phone;
     if (personalNumber) userData.personalNumber = personalNumber;
     if (dateOfBirth) userData.dateOfBirth = new Date(dateOfBirth);
 
     console.log("Step 5: Creating new user instance");
     
-    // Create new user
     user = new User(userData);
 
     console.log("Step 6: Hashing password");
     
-    // Hash password before saving
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
 
@@ -133,7 +118,6 @@ const register = async (req, res) => {
     
     console.log("Step 8: User saved successfully, ID:", user._id);
 
-    // Create email verification token
     const emailToken = jwt.sign(
       { id: user._id },
       process.env.EMAIL_SECRET,
@@ -142,13 +126,11 @@ const register = async (req, res) => {
 
     console.log("Step 9: Email token created");
 
-    // Debug: Check environment variables
     console.log("Environment variables check:");
     console.log("EMAIL_USER:", process.env.EMAIL_USER ? "SET" : "NOT SET");
     console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "SET" : "NOT SET");
     console.log("BASE_URL:", process.env.BASE_URL ? "SET" : "NOT SET");
 
-    // Email verification
     console.log("Checking sendEmail availability:");
     console.log("sendEmailModule exists:", !!sendEmailModule);
     console.log("sendVerificationEmail exists:", !!sendVerificationEmail);
@@ -233,10 +215,6 @@ const register = async (req, res) => {
   }
 };
 
-/**
- * Resend verification email
- * @route POST /api/auth/resend-verification
- */
 const resendVerification = async (req, res) => {
   try {
     const { email } = req.body;
@@ -280,10 +258,6 @@ const resendVerification = async (req, res) => {
   }
 };
 
-/**
- * Verify user email with token
- * @route GET /api/auth/verify/:token
- */
 const verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
@@ -368,10 +342,6 @@ const verifyEmail = async (req, res) => {
   }
 };
 
-/**
- * Login user
- * @route POST /api/auth/login
- */
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -379,6 +349,13 @@ const login = async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res.status(400).json({ message: "არასწორი ელ-ფოსტა ან პაროლი" });
+    }
+
+    if (user.provider === 'google' && !user.password) {
+      return res.status(400).json({ 
+        message: "ეს ანგარიში Google-ით არის შექმნილი. გთხოვთ შეხვიდეთ Google-ის საშუალებით.",
+        useGoogleLogin: true
+      });
     }
 
     if (!user.isVerified) {
@@ -403,7 +380,7 @@ const login = async (req, res) => {
     jwt.sign(
       payload,
       process.env.JWT_SECRET,
-      { expiresIn: '1d' },
+      { expiresIn: '7d' },
       (err, token) => {
         if (err) throw err;
         res.json({ 
@@ -429,10 +406,7 @@ const login = async (req, res) => {
   }
 };
 
-/**
- * Google Sign-In
- * @route POST /api/auth/google
- */
+// ✅ UPDATED: Google Login with isNewUser flag
 const googleLogin = async (req, res) => {
   console.log("=== GOOGLE LOGIN START ===");
   
@@ -479,6 +453,7 @@ const googleLogin = async (req, res) => {
     console.log("Step 3: Checking if user exists");
 
     let user = await User.findOne({ email: email.toLowerCase() });
+    let isNewUser = false; // ✅ დავამატეთ ფლაგი
 
     if (user) {
       console.log("Step 4: User exists, logging in");
@@ -495,6 +470,7 @@ const googleLogin = async (req, res) => {
 
     } else {
       console.log("Step 5: Creating new user from Google data");
+      isNewUser = true; // ✅ ახალი მომხმარებელია
 
       user = new User({
         name: name || '',
@@ -534,6 +510,7 @@ const googleLogin = async (req, res) => {
         res.json({
           success: true,
           token,
+          isNewUser, // ✅ დავაბრუნეთ isNewUser ფლაგი
           user: {
             id: user.id,
             name: user.name,
@@ -560,10 +537,47 @@ const googleLogin = async (req, res) => {
   }
 };
 
-/**
- * Forgot Password - Send password reset email
- * @route POST /api/auth/forgot-password
- */
+const logout = async (req, res) => {
+  console.log("=== LOGOUT START ===");
+  console.log("User ID:", req.userId || req.user?.id);
+  
+  try {
+    const userId = req.userId || req.user?.id;
+
+    if (userId) {
+      console.log(`✅ User ${userId} logged out successfully`);
+    }
+
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
+    });
+
+    console.log("✅ Logout successful");
+
+    res.status(200).json({ 
+      success: true,
+      message: "Logout successful" 
+    });
+
+  } catch (err) {
+    console.error("=== LOGOUT ERROR ===");
+    console.error("Error:", err);
+    res.status(500).json({ 
+      success: false,
+      message: "Logout failed",
+      error: err.message 
+    });
+  }
+};
+
 const forgotPassword = async (req, res) => {
   console.log("=== FORGOT PASSWORD START ===");
   console.log("Request body:", req.body);
@@ -648,10 +662,6 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-/**
- * Reset Password - Reset password with token
- * @route POST /api/auth/reset-password/:token
- */
 const resetPassword = async (req, res) => {
   console.log("=== RESET PASSWORD START ===");
   console.log("Request params:", req.params);
@@ -726,10 +736,6 @@ const resetPassword = async (req, res) => {
   }
 };
 
-/**
- * Verify Reset Token - Check if reset token is valid
- * @route GET /api/auth/verify-reset-token/:token
- */
 const verifyResetToken = async (req, res) => {
   try {
     const { token } = req.params;
@@ -790,5 +796,6 @@ module.exports = {
   resendVerification,
   forgotPassword,
   resetPassword,
-  verifyResetToken
+  verifyResetToken,
+  logout
 };
