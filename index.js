@@ -22,12 +22,12 @@ const server = http.createServer(app);
 const io = socketIO(server, {
   cors: {
     origin: [
-     'https://market-zone.netlify.app',
-  'https://imarketzone.ge',        // ✅ დაამატე
-  'https://www.imarketzone.ge',
-  'http://localhost:4200',
-  'http://localhost:3000',
-  'http://localhost:8080',
+      'https://market-zone.netlify.app',
+      'https://imarketzone.ge',
+      'https://www.imarketzone.ge',
+      'http://localhost:4200',
+      'http://localhost:3000',
+      'http://localhost:8080',
       process.env.CLIENT_URL
     ].filter(Boolean),
     methods: ['GET', 'POST'],
@@ -52,7 +52,8 @@ mongoose.set('strictQuery', true);
 app.use(cors({
   origin: [
     'https://market-zone.netlify.app',
-    'https://www.imarketzone.ge',
+    'https://imarketzone.ge',        // ✅ www-ს გარეშე
+    'https://www.imarketzone.ge',    // ✅ www-თი
     'http://localhost:4200',
     'http://localhost:3000',
     'http://localhost:8080',
